@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Users, FileText, Vote, StickyNote, Download, Eye } from 'lucide-react';
+import { Calendar, Users, FileText, Vote, StickyNote, Download, Eye, Trash2 } from 'lucide-react';
 import { apiCall } from '../../utils/api';
 import { useNavigate } from "react-router-dom";
 
@@ -7,12 +7,13 @@ const MeetingDetailsPage = ({ meetingId, onBack }) => {
   const [meeting, setMeeting] = useState(null);
   const [participants, setParticipants] = useState([]);
   const [activeTab, setActiveTab] = useState('agenda');
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [removingIds, setRemovingIds] = useState([]);
   const navigate = useNavigate();
 
   const joinMeeting = () => {
     navigate(`/meeting/${meetingId}`);
   };
-  
 
   // Load chi tiết meeting
   useEffect(() => {
@@ -50,7 +51,7 @@ const MeetingDetailsPage = ({ meetingId, onBack }) => {
           name: p.fullName,
           email: p.email,
           role: p.fullName === meeting?.organizer ? 'Host' : 'Member',
-          attendance: 'Present' // default, backend chưa trả về attendance
+          attendance: 'Present'
         })));
       } catch (err) {
         console.error('Lỗi tải danh sách participants:', err);
@@ -58,6 +59,25 @@ const MeetingDetailsPage = ({ meetingId, onBack }) => {
     };
     fetchParticipants();
   }, [meetingId, meeting?.organizer]);
+
+  // Xóa participant
+  const deleteParticipant = async () => {
+    if (!deleteTarget) return;
+    try {
+      setRemovingIds(prev => [...prev, deleteTarget.id]);
+
+      setTimeout(async () => {
+        await apiCall(`/Participant/meeting/${meetingId}/user/${deleteTarget.id}`, { method: 'DELETE' });
+        setParticipants(prev => prev.filter(p => p.id !== deleteTarget.id));
+        setDeleteTarget(null);
+      }, 300);
+    } catch (err) {
+      console.error("Lỗi khi xóa participant:", err);
+      alert("Failed to remove participant.");
+    }
+  };
+
+  const isHost = (name) => name === meeting?.organizer;
 
   if (!meeting) return <p className="text-text-light text-center py-8">Loading meeting...</p>;
 
@@ -75,20 +95,48 @@ const MeetingDetailsPage = ({ meetingId, onBack }) => {
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
           {onBack && (
-            <button
-              onClick={onBack}
-              className="text-text-light hover:text-text transition-colors"
-            >
+            <button onClick={onBack} className="text-text-light hover:text-text transition-colors">
               ← Back
             </button>
           )}
           <h1 className="text-3xl font-bold text-text">{meeting.title || 'Meeting Details'}</h1>
         </div>
         <button
-         onClick={() => navigate(`/meeting/${meeting.id}`)}
-         className="bg-primary hover:bg-primary-dark text-white px-6 py-2 rounded-button font-semibold transition-colors">
+          onClick={async () => {
+            try {
+              const token = localStorage.getItem("token");
+
+              // 1) Gọi API join
+              const joinInfo = await apiCall(`/Meetings/join/${meeting.id}`, {
+                method: "GET",
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
+              });
+
+              // 2) Lưu joinInfo vào session để MeetingDetailPage fallback nếu refresh
+              sessionStorage.setItem(
+                `joinInfo_${meeting.id}`,
+                JSON.stringify(joinInfo)
+              );
+
+              // 3) Điều hướng kèm state
+              navigate(`/meeting/${meeting.id}`, {
+                state: { joinInfo },
+              });
+            } catch (err) {
+              console.error("Join failed:", err);
+              alert(
+                err?.message ||
+                  "Không thể tham gia cuộc họp. Bạn có thể không có quyền hoặc cuộc họp chưa bắt đầu."
+              );
+            }
+          }}
+          className="bg-primary hover:bg-primary-dark text-white px-6 py-2 rounded-button font-semibold transition-colors"
+        >
           Join Meeting
         </button>
+
       </div>
 
       {/* Tabs */}
@@ -102,9 +150,7 @@ const MeetingDetailsPage = ({ meetingId, onBack }) => {
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
                 className={`flex items-center gap-2 px-6 py-4 font-semibold text-sm transition-colors whitespace-nowrap ${
-                  isActive
-                    ? 'text-primary border-b-2 border-primary'
-                    : 'text-text-light hover:text-text'
+                  isActive ? 'text-primary border-b-2 border-primary' : 'text-text-light hover:text-text'
                 }`}
               >
                 <Icon className="w-5 h-5" />
@@ -164,6 +210,7 @@ const MeetingDetailsPage = ({ meetingId, onBack }) => {
                       <th className="px-6 py-3 text-left text-xs font-semibold text-text-light uppercase">Name</th>
                       <th className="px-6 py-3 text-left text-xs font-semibold text-text-light uppercase">Role</th>
                       <th className="px-6 py-3 text-left text-xs font-semibold text-text-light uppercase">Attendance Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-text-light uppercase">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-secondary-dark">
@@ -175,6 +222,16 @@ const MeetingDetailsPage = ({ meetingId, onBack }) => {
                           <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
                             p.attendance === 'Present' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
                           }`}>{p.attendance}</span>
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          {isHost(meeting.organizer) && p.role !== 'Host' && (
+                            <button
+                              onClick={() => setDeleteTarget(p)}
+                              className="text-red-600 hover:text-red-800 flex items-center gap-1"
+                            >
+                              <Trash2 className="w-4 h-4" /> Remove
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -230,11 +287,44 @@ const MeetingDetailsPage = ({ meetingId, onBack }) => {
               )}
             </div>
           )}
-
-          {/* Voting and Notes tabs remain demo for now */}
-          {/* ... */}
         </div>
       </div>
+
+      {/* Delete confirmation modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-xl w-80 shadow-lg text-center">
+            <h3 className="text-lg font-semibold mb-2">Remove Participant</h3>
+            <p className="text-text-light mb-4">
+              Are you sure you want to remove <b>{deleteTarget.name}</b>?
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="px-4 py-2 rounded-lg bg-secondary hover:bg-secondary-dark"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    await apiCall(`/Participant/meeting/${meetingId}/user/${deleteTarget.id}`, { method: 'DELETE' });
+                    setParticipants(prev => prev.filter(p => p.id !== deleteTarget.id));
+                    setDeleteTarget(null);
+                  } catch (err) {
+                    console.error(err);
+                    alert("Failed to remove participant.");
+                  }
+                }}
+                className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
