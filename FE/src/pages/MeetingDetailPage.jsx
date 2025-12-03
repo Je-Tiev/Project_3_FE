@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React from "react";
 import { useParams } from "react-router-dom";
 import { useApp } from "../contexts/AppContext";
 import { useMeetingWithWebRTC } from "../hook/useMeeting";
@@ -6,7 +6,7 @@ import VideoTile from "../components/VideoTile";
 import { Mic, MicOff, Video, VideoOff, Share2 } from "lucide-react";
 
 export default function MeetingDetailPage() {
-  const { meetingId } = useParams();
+  const { meetingId } = useParams(); // lấy từ URL
   const { currentUser } = useApp();
 
   const {
@@ -22,16 +22,13 @@ export default function MeetingDetailPage() {
     isVideoOn,
   } = useMeetingWithWebRTC(meetingId);
 
-  if (status === "connecting") return <div>Đang kết nối...</div>;
+  if (status === "connecting" || status === "joining") return <div>Đang kết nối...</div>;
   if (status === "error") return <div>Không thể tham gia cuộc họp</div>;
 
   return (
     <div className="min-h-screen bg-gray-900 text-white p-4">
-
       {/* VIDEO GRID */}
-      <div className="grid gap-4"
-           style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
-        
+      <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
         {/* Local */}
         <VideoTile
           connectionId="local"
@@ -53,36 +50,33 @@ export default function MeetingDetailPage() {
             micEnabled={p.microphone !== false}
           />
         ))}
-
       </div>
 
       {/* CONTROL BAR */}
       <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 flex gap-4">
-        
         {/* MIC */}
-        <button 
-          onClick={() => toggleMicrophone()}
-          className="p-3 rounded-full bg-gray-700 hover:bg-gray-600"
+        <button
+          onClick={toggleMicrophone}
+          className={`p-3 rounded-full ${isMicOn ? 'bg-red-500 hover:bg-red-400' : 'bg-gray-700 hover:bg-gray-600'}`}
         >
           {isMicOn ? <Mic size={24} /> : <MicOff size={24} />}
         </button>
 
         {/* CAMERA */}
-        <button 
-          onClick={() => toggleCamera()}
-          className="p-3 rounded-full bg-gray-700 hover:bg-gray-600"
+        <button
+          onClick={toggleCamera}
+          className={`p-3 rounded-full ${isVideoOn ? 'bg-red-500 hover:bg-red-400' : 'bg-gray-700 hover:bg-gray-600'}`}
         >
           {isVideoOn ? <Video size={24} /> : <VideoOff size={24} />}
         </button>
 
         {/* SHARE SCREEN */}
-        <button 
+        <button
           onClick={startScreenShare}
-          className="p-3 rounded-full bg-gray-700 hover:bg-gray-600"
+          className="p-3 rounded-full bg-blue-500 hover:bg-blue-400"
         >
           <Share2 size={24} />
         </button>
-
       </div>
     </div>
   );

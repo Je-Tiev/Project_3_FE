@@ -88,13 +88,18 @@ const MeetingDetailsPage = ({ meetingId, onBack }) => {
             try {
               const token = localStorage.getItem("token");
 
+              console.log("Attempting to join meeting ID:", meetingId);
+
               // 1) Gọi API join
               const joinInfo = await apiCall(`/Meetings/join/${meetingId}`, {
+            
                 method: "GET",
                 headers: {
                   Authorization: `Bearer ${token}`,
                 },
+                
               });
+              console.log("Join Info Received:", joinInfo);
 
               // 2) Lưu joinInfo vào session để MeetingDetailPage fallback nếu refresh
               sessionStorage.setItem(
