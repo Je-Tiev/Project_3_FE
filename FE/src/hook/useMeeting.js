@@ -712,9 +712,18 @@ export function useMeetingWithWebRTC(
   // ---------- Setup Connection ----------
   useEffect(() => {
     if (!meetingId) return;
+    // NẾU DÙNG TRÊN LOCAL
+    // const connection = new HubConnectionBuilder()
+    //   .withUrl("http://localhost:5075/meetinghub", {
+    //     accessTokenFactory: () => localStorage.getItem("token"),
+    //     transport: HttpTransportType.WebSockets,
+    //   })
+    //   .withAutomaticReconnect()
+    //   .build();
 
+    // NẾU DÙNG TRÊN SERVER
     const connection = new HubConnectionBuilder()
-      .withUrl("http://localhost:5075/meetinghub", {
+      .withUrl("https://52.221.241.199.nip.io/meetinghub", {
         accessTokenFactory: () => localStorage.getItem("token"),
         transport: HttpTransportType.WebSockets,
       })
