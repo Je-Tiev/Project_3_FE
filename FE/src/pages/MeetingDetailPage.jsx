@@ -1,19 +1,42 @@
-import React from "react";
-import { useParams } from "react-router-dom";
+import React, { useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { useApp } from "../contexts/AppContext";
 import { useMeetingWithWebRTC } from "../hook/useMeeting";
 import VideoTile from "../components/VideoTile";
 import { Mic, MicOff, Video, VideoOff, Share2, PhoneOff } from "lucide-react";
 
 export default function MeetingDetailPage() {
-  const { meetingId } = useParams(); // lấy từ URL
+  const { meetingId } = useParams();
   const { currentUser } = useApp();
+  const navigate = useNavigate();
+  const [screenSharerId, setScreenSharerId] = useState(null);
+
+  const startShare = async () => {
+   await startScreenShare();
+   setScreenSharerId("local");
+   };
+
+  const stopShare = async () => {
+   await stopScreenShare();
+   setScreenSharerId(null);
+};
+
+
+
+  const [showLeaveMessage, setShowLeaveMessage] = useState(false);
+
+  const handleLeaveMeeting = () => {
+    setShowLeaveMessage(true);
+
+    setTimeout(() => {
+      navigate(-1); // quay về trang trước
+    },);
+  };
 
   const {
     status,
     participants,
     remoteStreams,
-    messages,
     toggleCamera,
     toggleMicrophone,
     startScreenShare,
@@ -31,6 +54,7 @@ export default function MeetingDetailPage() {
         Connecting...
       </div>
     );
+
   if (status === "error" || error)
     return (
       <div className="flex h-screen items-center justify-center bg-gray-900 text-red-500">
@@ -40,12 +64,12 @@ export default function MeetingDetailPage() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-white p-4">
+
       {/* VIDEO GRID */}
       <div
         className="grid gap-4"
         style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}
       >
-        {/* Local */}
         <VideoTile
           connectionId="local"
           fullName={currentUser?.fullName}
@@ -54,11 +78,10 @@ export default function MeetingDetailPage() {
           isScreenSharing={isScreenSharing}
           camEnabled={isVideoOn}
           micEnabled={isMicOn}
-          onToggleCam={() => toggleCamera()}
-          onToggleMic={() => toggleMicrophone()}
+          onToggleCam={toggleCamera}
+          onToggleMic={toggleMicrophone}
         />
 
-        {/* Remote */}
         {participants.map((p) => (
           <VideoTile
             key={p.connectionId}
@@ -73,13 +96,12 @@ export default function MeetingDetailPage() {
 
       {/* CONTROL BAR */}
       <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 flex gap-4">
+        
         {/* MIC */}
         <button
           onClick={toggleMicrophone}
           className={`p-3 rounded-full ${
-            isMicOn
-              ? "bg-red-500 hover:bg-red-400"
-              : "bg-gray-700 hover:bg-gray-600"
+            isMicOn ? "bg-red-500 hover:bg-red-400" : "bg-gray-700 hover:bg-gray-600"
           }`}
           title={isMicOn ? "Tắt micro" : "Bật micro"}
         >
@@ -90,9 +112,7 @@ export default function MeetingDetailPage() {
         <button
           onClick={toggleCamera}
           className={`p-3 rounded-full ${
-            isVideoOn
-              ? "bg-red-500 hover:bg-red-400"
-              : "bg-gray-700 hover:bg-gray-600"
+            isVideoOn ? "bg-red-500 hover:bg-red-400" : "bg-gray-700 hover:bg-gray-600"
           }`}
         >
           {isVideoOn ? <Video size={24} /> : <VideoOff size={24} />}
@@ -110,15 +130,22 @@ export default function MeetingDetailPage() {
         >
           <Share2 size={24} />
         </button>
+
         {/* LEAVE MEETING */}
         <button
-          className="p-4 rounded-full bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white border border-red-600/50 transition-all ml-4"
-          onClick={() => window.close() /* Hoặc navigate về Home */}
+          className="p-4 rounded-full bg-red-600/20 hover:bg-red-600 
+                     text-red-500 hover:text-white border border-red-600/50 
+                     transition-all ml-4"
+          onClick={handleLeaveMeeting}
           title="Rời cuộc họp"
         >
           <PhoneOff size={24} />
         </button>
+
       </div>
+
+      
+
     </div>
   );
 }

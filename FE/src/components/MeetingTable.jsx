@@ -1,10 +1,41 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { Link } from 'react-router-dom'; 
+import { Link, useNavigate } from 'react-router-dom'; 
+import { apiCall } from '../utils/api';
 
 const MeetingTable = () => {
   const { getFilteredMeetings, fetchMeetings, meetings, searchFilters, activeTab } = useApp();
   const [isLoading, setIsLoading] = useState(true);
+  const navigate = useNavigate();
+
+  const handleJoinMeeting = async (e, meetingId) => {
+  e.preventDefault(); // ❗ chặn Link tự điều hướng
+
+  try {
+    const token = localStorage.getItem("token");
+    if (!token) throw new Error("Bạn chưa đăng nhập.");
+
+    // GỌI API JOIN
+    const joinInfo = await apiCall(`/Meetings/join/${meetingId}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      }
+    });
+
+    // Lưu joinInfo
+    sessionStorage.setItem(`joinInfo_${meetingId}`, JSON.stringify(joinInfo));
+
+    // Điều hướng thủ công
+    navigate(`/meeting/${meetingId}`, {
+      state: { joinInfo }
+    });
+
+  } catch (err) {
+    console.error(err);
+    alert(err.message || "Không thể tham gia cuộc họp.");
+  }
+};
 
   // Tải dữ liệu cuộc họp khi component mount
   useEffect(() => {
@@ -96,6 +127,7 @@ const MeetingTable = () => {
                 <td className="px-4 py-4">
                   <Link 
                     to={`/meeting/${meeting.id}`}
+                    onClick={(e) => handleJoinMeeting(e, meeting.id)}
                     className="text-blue-600 hover:text-blue-800 text-sm hover:underline font-medium"
                   >
                     {meeting.title}
