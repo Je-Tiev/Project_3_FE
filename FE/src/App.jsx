@@ -6,6 +6,7 @@ import LoginPage from './pages/LoginPage';
 import HomePage from './pages/HomePage';
 import MeetingDetailPage from './pages/MeetingDetailPage';
 import MeetingDetailsPage from './pages/admin/MeetingDetailsPage';
+import MeetingLobby from './pages/MeetingLobby';
 import AdminLayout from './pages/admin/AdminLayout';
 
 const AppContent = () => {
@@ -28,6 +29,8 @@ if (currentUser?.role === 'Admin') {
     <Routes>
       {/* Admin layout */}
       <Route path="/admin/*" element={<AdminLayout />} />
+
+      <Route path="/meeting/:meetingId/lobby" element={<MeetingLobby />} />
 
       {/* Chi tiết meeting trong admin */}
       <Route path="/admin/meeting/:meetingId" element={<MeetingDetailsPage />} />

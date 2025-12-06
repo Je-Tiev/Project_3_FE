@@ -73,21 +73,22 @@ export const AppProvider = ({ children }) => {
 
   //  chạy 1 lần khi app mount
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    const savedUser = localStorage.getItem('currentUser');
+  const token = localStorage.getItem('token');
+  const savedUser = localStorage.getItem('currentUser');
 
-    if (token && savedUser) {
-      try {
-        setCurrentUser(JSON.parse(savedUser));
-        setIsAuthenticated(true);
-        
-        // Gọi fetchMeetings sau khi xác thực
-        fetchMeetings();
-      } catch (e) {
-        logout();
-      }
+  if (token && savedUser) {
+    try {
+      setCurrentUser(JSON.parse(savedUser));
+      setIsAuthenticated(true);
+
+      // GỌI fetchMeetings CHỈ 1 LẦN
+      fetchMeetings();
+    } catch (e) {
+      logout();
     }
-  }, [fetchMeetings]);
+  }
+}, []); //  <-- FIX QUAN TRỌNG
+
 
   // Hàm đăng nhập
   const login = async (username, password) => {

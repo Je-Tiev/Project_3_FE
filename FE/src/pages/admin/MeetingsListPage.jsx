@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Eye, Edit, Trash2, FileText, Plus } from 'lucide-react';
+import { Eye, Edit, Trash2, FileText, Plus, X } from 'lucide-react';
 import { apiCall } from '../../utils/api';
-import { useApp } from '../../contexts/AppContext';
 import MeetingDetailsPage from './MeetingDetailsPage';
 
 const MeetingsListPage = ({ onCreateMeeting }) => {
@@ -11,8 +10,10 @@ const MeetingsListPage = ({ onCreateMeeting }) => {
   const [roomFilter, setRoomFilter] = useState('');
   const [startDateFilter, setStartDateFilter] = useState('');
   const [selectedMeetingId, setSelectedMeetingId] = useState(null);
+  const [editMeeting, setEditMeeting] = useState(null);
+  const [toast, setToast] = useState(null); // { message: '', type: 'success'|'error' }
+  const [deleteMeetingId, setDeleteMeetingId] = useState(null); // id meeting muốn xóa
 
-  // Map status từ API → UI
   const statusMap = {
     Scheduled: 'not_started',
     Upcoming: 'not_started',
@@ -21,33 +22,57 @@ const MeetingsListPage = ({ onCreateMeeting }) => {
     Postponed: 'postponed'
   };
 
-  // Format ngày dd/mm/yyyy theo giờ Việt Nam
-const formatDate = (iso) => {
-  if (!iso) return "";
-  const dateObj = new Date(iso);
-  return dateObj.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
-};
+  // Toast helper
+  const showToast = (message, type = 'success', duration = 3000) => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), duration);
+  };
 
-// Format giờ HH:mm theo giờ Việt Nam
-const formatTime = (iso) => {
-  if (!iso) return "";
-  const dateObj = new Date(iso);
-  return dateObj.toLocaleTimeString('vi-VN', { 
-    hour: '2-digit', 
-    minute: '2-digit', 
-    hour12: false, 
-    timeZone: 'Asia/Ho_Chi_Minh' 
-  });
-};
+  // Convert ISO sang "YYYY-MM-DDTHH:mm" cho input datetime-local theo giờ Việt Nam
+  const toLocalDateTimeInput = (iso) => {
+    if (!iso) return "";
+    const date = new Date(iso);
+    const utc = date.getTime() + date.getTimezoneOffset() * 60000;
+    const vnTime = new Date(utc + 7 * 3600 * 1000);
+    const pad = (n) => n.toString().padStart(2, '0');
+    const YYYY = vnTime.getFullYear();
+    const MM = pad(vnTime.getMonth() + 1);
+    const DD = pad(vnTime.getDate());
+    const HH = pad(vnTime.getHours());
+    const mm = pad(vnTime.getMinutes());
+    return `${YYYY}-${MM}-${DD}T${HH}:${mm}`;
+  };
 
-  // Load meetings từ API
+  // Convert từ input datetime-local sang ISO để gửi API
+  const fromLocalDateTimeInput = (localValue) => {
+    const localDate = new Date(localValue);
+    return localDate.toISOString();
+  };
+
+  const formatDate = (iso) => {
+    if (!iso) return "";
+    const dateObj = new Date(iso);
+    return dateObj.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+  };
+
+  const formatTime = (iso) => {
+    if (!iso) return "";
+    const dateObj = new Date(iso);
+    return dateObj.toLocaleTimeString('vi-VN', { 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      hour12: false, 
+      timeZone: 'Asia/Ho_Chi_Minh' 
+    });
+  };
+
+  // Load meetings
   useEffect(() => {
     const fetchMeetings = async () => {
       try {
         const data = await apiCall('/Meetings', { method: 'GET' });
-
         const formatted = data.map(m => ({
-          id: m.meetingId, // FIX: dùng meetingId
+          id: m.meetingId,
           date: formatDate(m.startTime),
           time: formatTime(m.startTime),
           location: m.location || '',
@@ -56,20 +81,21 @@ const formatTime = (iso) => {
           file_pre: m.file_pre,
           status: statusMap[m.status] || 'not_started',
           title: m.title || '',
-          description: m.description || ''
+          description: m.description || '',
+          startTimeISO: m.startTime,
+          endTimeISO: m.endTime
         }));
-
         setMeetings(formatted);
         setFilteredMeetings(formatted);
       } catch (err) {
-        console.error('Lỗi tải danh sách meeting:', err);
+        console.error(err);
+        showToast("Lỗi tải danh sách meeting!", "error");
       }
     };
-
     fetchMeetings();
   }, []);
 
-  // Lọc meetings
+  // Filter meetings
   useEffect(() => {
     const filtered = meetings.filter(m => {
       const matchStatus = statusFilter === 'all' || m.status === statusFilter;
@@ -77,12 +103,9 @@ const formatTime = (iso) => {
       const matchStartDate = !startDateFilter || m.date === startDateFilter;
       return matchStatus && matchRoom && matchStartDate;
     });
-
     setFilteredMeetings(filtered);
   }, [statusFilter, roomFilter, startDateFilter, meetings]);
 
-
-  // Nếu click vào meeting → chuyển sang trang chi tiết
   if (selectedMeetingId) {
     return (
       <MeetingDetailsPage 
@@ -92,7 +115,6 @@ const formatTime = (iso) => {
     );
   }
 
-  // Hiển thị badge status
   const getStatusBadge = (status) => {
     const config = {
       not_started: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Upcoming' },
@@ -100,9 +122,7 @@ const formatTime = (iso) => {
       completed: { bg: 'bg-green-100', text: 'text-green-700', label: 'Completed' },
       postponed: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Postponed' }
     };
-
     const c = config[status] || config.not_started;
-
     return (
       <span className={`px-3 py-1 rounded-full text-xs font-semibold ${c.bg} ${c.text}`}>
         {c.label}
@@ -110,8 +130,31 @@ const formatTime = (iso) => {
     );
   };
 
+  const handleSaveEdit = async () => {
+    try {
+      await apiCall(`/Meetings/${editMeeting.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          title: editMeeting.title,
+          description: editMeeting.description,
+          startTime: editMeeting.startTimeISO,
+          endTime: editMeeting.endTimeISO,
+          location: editMeeting.location
+        }),
+      });
+      setMeetings(prev =>
+        prev.map(m => m.id === editMeeting.id ? { ...m, ...editMeeting } : m)
+      );
+      showToast("Cập nhật meeting thành công!", "success");
+      setEditMeeting(null);
+    } catch (err) {
+      console.error(err);
+      showToast("Cập nhật meeting thất bại!", "error");
+    }
+  };
+
   return (
-    <div className="p-6">
+    <div className="p-6 relative">
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold text-text">Meetings List</h1>
@@ -186,11 +229,10 @@ const formatTime = (iso) => {
                   onClick={() => setSelectedMeetingId(meeting.id)}
                   className={`${index % 2 === 0 ? 'bg-white' : 'bg-secondary'} cursor-pointer hover:bg-primary/10 transition-colors`}
                 >
-                  <td className="px-6 py-4 text-sm text-text">{meeting.date}</td>
-                  <td className="px-6 py-4 text-sm text-text">{meeting.time}</td>
+                  <td className="px-6 py-4 text-sm text-text">{formatDate(meeting.startTimeISO)}</td>
+                  <td className="px-6 py-4 text-sm text-text">{formatTime(meeting.startTimeISO)}</td>
                   <td className="px-6 py-4 text-sm text-text">{meeting.location || 'N/A'}</td>
                   <td className="px-6 py-4 text-sm text-text">{meeting.organizer || 'N/A'}</td>
-
                   <td className="px-6 py-4 text-sm">
                     {meeting.file_rev || meeting.file_pre ? (
                       <span className="text-primary flex items-center gap-1">
@@ -201,18 +243,30 @@ const formatTime = (iso) => {
                       <span className="text-text-light">No documents</span>
                     )}
                   </td>
-
                   <td className="px-6 py-4">{getStatusBadge(meeting.status)}</td>
-
                   <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-2">
-                      <button className="p-2 text-primary hover:bg-secondary rounded-button" title="View">
+                      <button
+                        className="p-2 text-primary hover:bg-secondary rounded-button"
+                        title="View"
+                        onClick={() => setSelectedMeetingId(meeting.id)}
+                      >
                         <Eye className="w-4 h-4" />
                       </button>
-                      <button className="p-2 text-primary hover:bg-secondary rounded-button" title="Edit">
+
+                      <button
+                        className="p-2 text-primary hover:bg-secondary rounded-button"
+                        title="Edit"
+                        onClick={() => setEditMeeting(meeting)}
+                      >
                         <Edit className="w-4 h-4" />
                       </button>
-                      <button className="p-2 text-red-600 hover:bg-secondary rounded-button" title="Delete">
+
+                      <button
+                        className="p-2 text-red-600 hover:bg-secondary rounded-button"
+                        title="Delete"
+                        onClick={() => setDeleteMeetingId(meeting.id)}
+                      >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
@@ -228,10 +282,135 @@ const formatTime = (iso) => {
                 </tr>
               )}
             </tbody>
-
           </table>
         </div>
       </div>
+
+      {/* Edit Modal */}
+      {editMeeting && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg w-full max-w-lg p-6 relative">
+            <button
+              className="absolute top-4 right-4 p-2 text-gray-500 hover:text-gray-800"
+              onClick={() => setEditMeeting(null)}
+            >
+              <X />
+            </button>
+            <h2 className="text-xl font-bold mb-4">Edit Meeting</h2>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-text mb-1">Title</label>
+                <input
+                  type="text"
+                  value={editMeeting.title}
+                  onChange={(e) => setEditMeeting({ ...editMeeting, title: e.target.value })}
+                  className="w-full px-4 py-2 border border-secondary-dark rounded-button"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-text mb-1">Description</label>
+                <textarea
+                  value={editMeeting.description}
+                  onChange={(e) => setEditMeeting({ ...editMeeting, description: e.target.value })}
+                  className="w-full px-4 py-2 border border-secondary-dark rounded-button"
+                  rows={3}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-text mb-1">Location</label>
+                <input
+                  type="text"
+                  value={editMeeting.location}
+                  onChange={(e) => setEditMeeting({ ...editMeeting, location: e.target.value })}
+                  className="w-full px-4 py-2 border border-secondary-dark rounded-button"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-text mb-1">Start Time</label>
+                <input
+                  type="datetime-local"
+                  value={toLocalDateTimeInput(editMeeting.startTimeISO)}
+                  onChange={(e) => setEditMeeting({
+                    ...editMeeting,
+                    startTimeISO: fromLocalDateTimeInput(e.target.value)
+                  })}
+                  className="w-full px-4 py-2 border border-secondary-dark rounded-button"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-text mb-1">End Time</label>
+                <input
+                  type="datetime-local"
+                  value={toLocalDateTimeInput(editMeeting.endTimeISO)}
+                  onChange={(e) => setEditMeeting({
+                    ...editMeeting,
+                    endTimeISO: fromLocalDateTimeInput(e.target.value)
+                  })}
+                  className="w-full px-4 py-2 border border-secondary-dark rounded-button"
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                className="px-4 py-2 rounded-button bg-gray-300 hover:bg-gray-400"
+                onClick={() => setEditMeeting(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 rounded-button bg-primary text-white hover:bg-primary-dark"
+                onClick={handleSaveEdit}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteMeetingId && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg w-full max-w-md p-6">
+            <h2 className="text-lg font-bold mb-4">Xác nhận xóa</h2>
+            <p className="mb-6">Bạn có chắc muốn xóa meeting này không?</p>
+            <div className="flex justify-end gap-2">
+              <button
+                className="px-4 py-2 rounded-button bg-gray-300 hover:bg-gray-400"
+                onClick={() => setDeleteMeetingId(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 rounded-button bg-red-600 text-white hover:bg-red-700"
+                onClick={async () => {
+                  try {
+                    await apiCall(`/Meetings/${deleteMeetingId}`, { method: 'DELETE' });
+                    setMeetings(prev => prev.filter(m => m.id !== deleteMeetingId));
+                    showToast("Xóa meeting thành công!", "success");
+                  } catch (err) {
+                    console.error(err);
+                    showToast("Xóa meeting thất bại!", "error");
+                  } finally {
+                    setDeleteMeetingId(null);
+                  }
+                }}
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`fixed top-5 right-5 px-4 py-2 rounded-lg shadow-lg text-white z-50
+          ${toast.type === 'success' ? 'bg-green-500' : 'bg-red-500'}`}>
+          {toast.message}
+        </div>
+      )}
     </div>
   );
 };

@@ -1,399 +1,139 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { useApp } from '../contexts/AppContext';
-import {
-  Calendar,
-  Clock,
-  MapPin,
-  User,
-  FileText,
-  Users,
-  ArrowLeft,
-  Video,
-  Mic,
-  MicOff,
-  VideoOff,
-  Download,
-  Eye,
-  File
-} from 'lucide-react';
-import { apiCall } from '../utils/api';
 
-const MeetingDetailPage = () => {
-  const { meetingId } = useParams(); // đổi từ `id` → `meetingId` cho thống nhất với App.js
+import React, { useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { useApp } from "../contexts/AppContext";
+import { useMeetingWithWebRTC } from "../hook/useMeeting";
+import VideoTile from "../components/VideoTile";
+import { Mic, MicOff, Video, VideoOff, Share2, PhoneOff } from "lucide-react";
+
+export default function MeetingDetailPage() {
+  const { meetingId } = useParams();
+  const { currentUser } = useApp();
   const navigate = useNavigate();
-  const { meetings, currentUser } = useApp();
 
-  const [meeting, setMeeting] = useState(null);
-  const [isMicOn, setIsMicOn] = useState(true);
-  const [isVideoOn, setIsVideoOn] = useState(true);
-  const [notes, setNotes] = useState('');
+  const [showLeaveMessage, setShowLeaveMessage] = useState(false);
 
-  const [documents, setDocuments] = useState([]);
-  const [loadingDocs, setLoadingDocs] = useState(false);
+  const handleLeaveMeeting = () => {
+    setShowLeaveMessage(true);
 
-  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5075/api';
-
-  // Tải tài liệu liên quan cuộc họp
-  useEffect(() => {
-    // So sánh id dưới dạng string để tránh mismatch
-    const foundMeeting = meetings.find(m => `${m.id}` === `${meetingId}`);
-    if (foundMeeting) {
-      setMeeting(foundMeeting);
-      fetchDocuments(meetingId);
-    } else {
-      navigate('/'); // nếu không tìm thấy → về Home
-    }
-  }, [meetingId, meetings, navigate]);
-
-  // Fetch documents từ API
-  const fetchDocuments = async (meetingId) => {
-    setLoadingDocs(true);
-    try {
-      console.log(`Fetching documents for meeting ${meetingId}...`);
-
-      const response = await apiCall(
-        `/Document/GetDocumentsByMeeting/meeting/${meetingId}`,
-        { method: 'GET' }
-      );
-
-      console.log('Documents response:', response);
-
-      // Response là array trực tiếp
-      const docs = Array.isArray(response) ? response : [];
-      setDocuments(docs);
-
-      console.log(`Loaded ${docs.length} documents`);
-    } catch (error) {
-      console.error('Lỗi tải documents:', error);
-      setDocuments([]);
-    } finally {
-      setLoadingDocs(false);
-    }
+    setTimeout(() => {
+      navigate(-1); // quay về trang trước
+    }, 1000);
   };
 
-  // View document - Mở tab mới
-  const handleViewDocument = async (documentId, fileName) => {
-    try {
-      const token = localStorage.getItem('token');
+  const {
+    status,
+    participants,
+    remoteStreams,
+    toggleCamera,
+    toggleMicrophone,
+    startScreenShare,
+    stopScreenShare,
+    error,
+    localStream,
+    isMicOn,
+    isVideoOn,
+    isScreenSharing,
+  } = useMeetingWithWebRTC(meetingId);
 
-      console.log(`Viewing document ${documentId}: ${fileName}`);
-
-      const response = await fetch(
-        `${API_BASE_URL}/Document/DownloadDocument/${documentId}/download`,
-        {
-          headers: { 'Authorization': `Bearer ${token}` }
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Không thể tải file');
-      }
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-
-      // Mở tab mới với blob URL
-      window.open(url, '_blank');
-
-      // Cleanup sau 1 phút
-      setTimeout(() => window.URL.revokeObjectURL(url), 60000);
-
-      console.log(' File opened successfully');
-    } catch (error) {
-      console.error('Lỗi xem file:', error);
-      alert('Không thể xem file. Vui lòng thử lại!');
-    }
-  };
-
-  // Download document
-  const handleDownloadDocument = async (documentId, fileName) => {
-    try {
-      const token = localStorage.getItem('token');
-
-      console.log(`Downloading document ${documentId}: ${fileName}`);
-
-      const response = await fetch(
-        `${API_BASE_URL}/Document/DownloadDocument/${documentId}/download`,
-        {
-          headers: { 'Authorization': `Bearer ${token}` }
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Không thể tải file');
-      }
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-
-      console.log('File downloaded successfully');
-    } catch (error) {
-      console.error('Lỗi download file:', error);
-      alert('Không thể tải file. Vui lòng thử lại!');
-    }
-  };
-
-
-  const getFileIcon = (fileName) => {
-    const ext = fileName?.split('.').pop()?.toLowerCase();
-    const iconClass = "w-5 h-5";
-
-    if (['pdf'].includes(ext)) return <File className={`${iconClass} text-red-600`} />;
-    if (['doc', 'docx'].includes(ext)) return <File className={`${iconClass} text-blue-600`} />;
-    if (['xls', 'xlsx'].includes(ext)) return <File className={`${iconClass} text-green-600`} />;
-    if (['ppt', 'pptx'].includes(ext)) return <File className={`${iconClass} text-orange-600`} />;
-    return <FileText className={`${iconClass} text-gray-600`} />;
-  };
-
-  const handleSaveNotes = () => {
-    alert('Đã lưu ghi chú!');
-  };
-
-  if (!meeting) {
+  if (status === "connecting" || status === "reconnecting")
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Đang tải thông tin cuộc họp...</p>
-        </div>
+      <div className="flex h-screen items-center justify-center bg-gray-900 text-white">
+        Connecting...
       </div>
     );
-  }
+
+  if (status === "error" || error)
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-900 text-red-500">
+        {error || "Error joining room"}
+      </div>
+    );
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <div className="bg-red-600 text-white shadow-lg">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => navigate('/')} // về trang chủ User
-                className="hover:bg-red-700 p-2 rounded-lg transition-colors"
-              >
-                <ArrowLeft size={24} />
-              </button>
-              <div>
-                <h1 className="text-xl font-bold">{meeting.title}</h1>
-                <p className="text-sm text-red-100">
-                  {meeting.dayOfWeek}, {meeting.date} - {meeting.time}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-2">
-              <span className="text-sm">{currentUser?.fullName}</span>
-            </div>
-          </div>
-        </div>
+    <div className="min-h-screen bg-gray-900 text-white p-4">
+
+      {/* VIDEO GRID */}
+      <div
+        className="grid gap-4"
+        style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}
+      >
+        <VideoTile
+          connectionId="local"
+          fullName={currentUser?.fullName}
+          stream={localStream}
+          isLocal={true}
+          isScreenSharing={isScreenSharing}
+          camEnabled={isVideoOn}
+          micEnabled={isMicOn}
+          onToggleCam={toggleCamera}
+          onToggleMic={toggleMicrophone}
+        />
+
+        {participants.map((p) => (
+          <VideoTile
+            key={p.connectionId}
+            connectionId={p.connectionId}
+            fullName={p.fullName}
+            stream={remoteStreams[p.connectionId]}
+            camEnabled={p.isVideoEnabled !== false}
+            micEnabled={p.isMicEnabled !== false}
+          />
+        ))}
       </div>
 
-      <div className="container mx-auto px-4 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-gray-900 rounded-lg overflow-hidden shadow-lg">
-              <div className="aspect-video bg-gray-800 flex items-center justify-center relative">
-                <div className="text-center text-white">
-                  <Video size={64} className="mx-auto mb-4 opacity-50" />
-                  <p className="text-lg">Khu vực video cuộc họp</p>
-                  <p className="text-sm text-gray-400 mt-2">
-                    Video conference sẽ được tích hợp ở đây
-                  </p>
-                </div>
+      {/* CONTROL BAR */}
+      <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 flex gap-4">
+        
+        {/* MIC */}
+        <button
+          onClick={toggleMicrophone}
+          className={`p-3 rounded-full ${
+            isMicOn ? "bg-red-500 hover:bg-red-400" : "bg-gray-700 hover:bg-gray-600"
+          }`}
+          title={isMicOn ? "Tắt micro" : "Bật micro"}
+        >
+          {isMicOn ? <Mic size={24} /> : <MicOff size={24} />}
+        </button>
 
-                <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-4">
-                  <button
-                    onClick={() => setIsMicOn(!isMicOn)}
-                    className={`p-4 rounded-full transition-colors ${isMicOn ? 'bg-gray-700 hover:bg-gray-600' : 'bg-red-600 hover:bg-red-700'
-                      }`}
-                  >
-                    {isMicOn ? <Mic size={24} /> : <MicOff size={24} />}
-                  </button>
-                  <button
-                    onClick={() => setIsVideoOn(!isVideoOn)}
-                    className={`p-4 rounded-full transition-colors ${isVideoOn ? 'bg-gray-700 hover:bg-gray-600' : 'bg-red-600 hover:bg-red-700'
-                      }`}
-                  >
-                    {isVideoOn ? <Video size={24} /> : <VideoOff size={24} />}
-                  </button>
-                  <button
-                    onClick={() => navigate('/')} // rời cuộc họp → về Home
-                    className="px-6 py-4 bg-red-600 hover:bg-red-700 rounded-full font-semibold transition-colors"
-                  >
-                    Rời cuộc họp
-                  </button>
-                </div>
-              </div>
-            </div>
+        {/* CAMERA */}
+        <button
+          onClick={toggleCamera}
+          className={`p-3 rounded-full ${
+            isVideoOn ? "bg-red-500 hover:bg-red-400" : "bg-gray-700 hover:bg-gray-600"
+          }`}
+        >
+          {isVideoOn ? <Video size={24} /> : <VideoOff size={24} />}
+        </button>
 
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold text-gray-800 flex items-center">
-                  <FileText className="mr-2" size={20} />
-                  Ghi chú cuộc họp
-                </h2>
-                <button
-                  onClick={handleSaveNotes}
-                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors text-sm"
-                >
-                  Lưu ghi chú
-                </button>
-              </div>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Nhập ghi chú của bạn về cuộc họp..."
-                className="w-full h-48 p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent resize-none"
-              />
-            </div>
-          </div>
+        {/* SHARE SCREEN */}
+        <button
+          onClick={isScreenSharing ? stopScreenShare : startScreenShare}
+          className={`p-4 rounded-full transition-all ${
+            isScreenSharing
+              ? "bg-blue-500 hover:bg-blue-600 text-white"
+              : "bg-gray-700 hover:bg-gray-600 text-gray-200"
+          }`}
+          title={isScreenSharing ? "Dừng chia sẻ" : "Chia sẻ màn hình"}
+        >
+          <Share2 size={24} />
+        </button>
 
-          <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-lg font-bold text-gray-800 mb-4">Thông tin cuộc họp</h2>
+        {/* LEAVE MEETING */}
+        <button
+          className="p-4 rounded-full bg-red-600/20 hover:bg-red-600 
+                     text-red-500 hover:text-white border border-red-600/50 
+                     transition-all ml-4"
+          onClick={handleLeaveMeeting}
+          title="Rời cuộc họp"
+        >
+          <PhoneOff size={24} />
+        </button>
 
-              <div className="space-y-4">
-                <div className="flex items-start">
-                  <Calendar className="text-red-600 mr-3 mt-1" size={20} />
-                  <div>
-                    <p className="text-sm text-gray-500">Ngày</p>
-                    <p className="font-semibold">{meeting.dayOfWeek}, {meeting.date}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-start">
-                  <Clock className="text-red-600 mr-3 mt-1" size={20} />
-                  <div>
-                    <p className="text-sm text-gray-500">Thời gian</p>
-                    <p className="font-semibold">{meeting.session} - {meeting.time}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-start">
-                  <MapPin className="text-red-600 mr-3 mt-1" size={20} />
-                  <div>
-                    <p className="text-sm text-gray-500">Địa điểm</p>
-                    <p className="font-semibold">{meeting.location}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-start">
-                  <User className="text-red-600 mr-3 mt-1" size={20} />
-                  <div>
-                    <p className="text-sm text-gray-500">Lãnh đạo chủ trì</p>
-                    <p className="font-semibold">{meeting.organizer || 'Chưa cập nhật'}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-start">
-                  <Users className="text-red-600 mr-3 mt-1" size={20} />
-                  <div>
-                    <p className="text-sm text-gray-500">Vai trò của bạn</p>
-                    <span className="inline-block bg-green-100 text-green-700 text-xs px-3 py-1 rounded-full font-semibold mt-1">
-                      {meeting.roles && meeting.roles[0]}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center justify-between">
-                <span>Tài liệu</span>
-                {loadingDocs && (
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600"></div>
-                )}
-              </h2>
-
-              <div className="space-y-3">
-                {loadingDocs ? (
-                  <p className="text-sm text-gray-500 text-center py-4">Đang tải tài liệu...</p>
-                ) : documents.length > 0 ? (
-                  documents.map((doc) => (
-                    <div
-                      key={doc.documentId}
-                      className="p-3 border border-gray-200 rounded-lg hover:border-red-300 transition-colors"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-start space-x-3 flex-1">
-                          {getFileIcon(doc.fileName)}
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-800 truncate">
-                              {doc.fileName}
-                            </p>
-                            <div className="flex items-center space-x-2 mt-1">
-                              {/* Chỉ hiển thị visibility nếu có */}
-                              {doc.visibility && (
-                                <span className={`text-xs px-2 py-0.5 rounded ${doc.visibility === 'Chung'
-                                    ? 'bg-blue-100 text-blue-700'
-                                    : 'bg-purple-100 text-purple-700'
-                                  }`}>
-                                  {doc.visibility}
-                                </span>
-                              )}
-
-                              {/* Chỉ hiển thị uploadDate nếu có */}
-                              {doc.uploadDate && (
-                                <p className="text-xs text-gray-400">
-                                  {new Date(doc.uploadDate).toLocaleDateString('vi-VN')}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex space-x-2 ml-2">
-                          <button
-                            onClick={() => handleViewDocument(doc.documentId, doc.fileName)}
-                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="Xem"
-                          >
-                            <Eye size={16} />
-                          </button>
-                          <button
-                            onClick={() => handleDownloadDocument(doc.documentId, doc.fileName)}
-                            className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                            title="Tải xuống"
-                          >
-                            <Download size={16} />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-gray-500 text-center py-4">Chưa có tài liệu</p>
-                )}
-              </div>
-            </div>
-
-
-
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-lg font-bold text-gray-800 mb-4">Trạng thái</h2>
-              <div className="text-center">
-                {meeting.approved ? (
-                  <span className="inline-block bg-green-500 text-white px-6 py-3 rounded-full font-semibold">
-                    ĐÃ HỌP
-                  </span>
-                ) : (
-                  <span className="inline-block bg-red-500 text-white px-6 py-3 rounded-full font-semibold">
-                    Chưa bắt đầu
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
+
+      
+
     </div>
   );
-};
-
-export default MeetingDetailPage;
+}

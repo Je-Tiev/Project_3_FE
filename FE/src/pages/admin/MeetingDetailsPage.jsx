@@ -2,20 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { Calendar, Users, FileText, Vote, StickyNote, Download, Eye } from 'lucide-react';
 import { apiCall } from '../../utils/api';
 import { useNavigate } from "react-router-dom";
+import { useApp } from '../../contexts/AppContext';
+
 
 const MeetingDetailsPage = ({ meetingId, onBack }) => {
   const [meeting, setMeeting] = useState(null);
   const [participants, setParticipants] = useState([]);
   const [activeTab, setActiveTab] = useState('agenda');
   const navigate = useNavigate();
+  const { currentUser } = useApp();
 
-  const joinMeeting = () => {
-    navigate(`/meeting/${meetingId}`);
-  };
-  
+ 
 
   // Load chi tiết meeting
   useEffect(() => {
+    if (!meetingId) return;
     const fetchMeeting = async () => {
       try {
         const data = await apiCall(`/Meetings/${meetingId}`, { method: 'GET' });
@@ -42,6 +43,7 @@ const MeetingDetailsPage = ({ meetingId, onBack }) => {
 
   // Load participants
   useEffect(() => {
+    if (!meetingId) return;
     const fetchParticipants = async () => {
       try {
         const data = await apiCall(`/Participant/meeting/${meetingId}`, { method: 'GET' });
@@ -85,10 +87,40 @@ const MeetingDetailsPage = ({ meetingId, onBack }) => {
           <h1 className="text-3xl font-bold text-text">{meeting.title || 'Meeting Details'}</h1>
         </div>
         <button
-         onClick={() => navigate(`/meeting/${meeting.id}`)}
-         className="bg-primary hover:bg-primary-dark text-white px-6 py-2 rounded-button font-semibold transition-colors">
-          Join Meeting
-        </button>
+  onClick={async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) throw new Error("Bạn chưa đăng nhập.");
+
+      console.log("Attempting to join meeting ID:", meetingId);
+
+      // GỌI API JOIN – GET, KHÔNG BODY
+      const joinInfo = await apiCall(`/Meetings/join/${meetingId}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        }
+      });
+
+      console.log("Join Info Received:", joinInfo);
+
+      // Lưu vào sessionStorage
+      sessionStorage.setItem(`joinInfo_${meetingId}`, JSON.stringify(joinInfo));
+
+      // Điều hướng sang MeetingPage
+      navigate(`/meeting/${meetingId}/lobby`);
+    } catch (err) {
+      console.error("Join failed:", err);
+      alert(err?.message || "Không thể tham gia cuộc họp.");
+    }
+  }}
+  className="bg-primary hover:bg-primary-dark text-white px-6 py-2 rounded-button font-semibold transition-colors"
+>
+  Join Meeting
+</button>
+
+
+
       </div>
 
       {/* Tabs */}
