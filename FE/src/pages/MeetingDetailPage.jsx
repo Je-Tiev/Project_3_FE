@@ -1,38 +1,157 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../contexts/AppContext';
-import { 
-  Calendar, 
-  Clock, 
-  MapPin, 
-  User, 
-  FileText, 
+import {
+  Calendar,
+  Clock,
+  MapPin,
+  User,
+  FileText,
   Users,
   ArrowLeft,
   Video,
   Mic,
   MicOff,
-  VideoOff
+  VideoOff,
+  Download,
+  Eye,
+  File
 } from 'lucide-react';
+import { apiCall } from '../utils/api';
 
 const MeetingDetailPage = () => {
   const { meetingId } = useParams(); // đổi từ `id` → `meetingId` cho thống nhất với App.js
   const navigate = useNavigate();
   const { meetings, currentUser } = useApp();
+
   const [meeting, setMeeting] = useState(null);
   const [isMicOn, setIsMicOn] = useState(true);
   const [isVideoOn, setIsVideoOn] = useState(true);
   const [notes, setNotes] = useState('');
 
+  const [documents, setDocuments] = useState([]);
+  const [loadingDocs, setLoadingDocs] = useState(false);
+
+  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5075/api';
+
+  // Tải tài liệu liên quan cuộc họp
   useEffect(() => {
     // So sánh id dưới dạng string để tránh mismatch
     const foundMeeting = meetings.find(m => `${m.id}` === `${meetingId}`);
     if (foundMeeting) {
       setMeeting(foundMeeting);
+      fetchDocuments(meetingId);
     } else {
       navigate('/'); // nếu không tìm thấy → về Home
     }
   }, [meetingId, meetings, navigate]);
+
+  // Fetch documents từ API
+  const fetchDocuments = async (meetingId) => {
+    setLoadingDocs(true);
+    try {
+      console.log(`Fetching documents for meeting ${meetingId}...`);
+
+      const response = await apiCall(
+        `/Document/GetDocumentsByMeeting/meeting/${meetingId}`,
+        { method: 'GET' }
+      );
+
+      console.log('Documents response:', response);
+
+      // Response là array trực tiếp
+      const docs = Array.isArray(response) ? response : [];
+      setDocuments(docs);
+
+      console.log(`Loaded ${docs.length} documents`);
+    } catch (error) {
+      console.error('Lỗi tải documents:', error);
+      setDocuments([]);
+    } finally {
+      setLoadingDocs(false);
+    }
+  };
+
+  // View document - Mở tab mới
+  const handleViewDocument = async (documentId, fileName) => {
+    try {
+      const token = localStorage.getItem('token');
+
+      console.log(`Viewing document ${documentId}: ${fileName}`);
+
+      const response = await fetch(
+        `${API_BASE_URL}/Document/DownloadDocument/${documentId}/download`,
+        {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Không thể tải file');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+
+      // Mở tab mới với blob URL
+      window.open(url, '_blank');
+
+      // Cleanup sau 1 phút
+      setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+
+      console.log(' File opened successfully');
+    } catch (error) {
+      console.error('Lỗi xem file:', error);
+      alert('Không thể xem file. Vui lòng thử lại!');
+    }
+  };
+
+  // Download document
+  const handleDownloadDocument = async (documentId, fileName) => {
+    try {
+      const token = localStorage.getItem('token');
+
+      console.log(`Downloading document ${documentId}: ${fileName}`);
+
+      const response = await fetch(
+        `${API_BASE_URL}/Document/DownloadDocument/${documentId}/download`,
+        {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Không thể tải file');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      console.log('File downloaded successfully');
+    } catch (error) {
+      console.error('Lỗi download file:', error);
+      alert('Không thể tải file. Vui lòng thử lại!');
+    }
+  };
+
+
+  const getFileIcon = (fileName) => {
+    const ext = fileName?.split('.').pop()?.toLowerCase();
+    const iconClass = "w-5 h-5";
+
+    if (['pdf'].includes(ext)) return <File className={`${iconClass} text-red-600`} />;
+    if (['doc', 'docx'].includes(ext)) return <File className={`${iconClass} text-blue-600`} />;
+    if (['xls', 'xlsx'].includes(ext)) return <File className={`${iconClass} text-green-600`} />;
+    if (['ppt', 'pptx'].includes(ext)) return <File className={`${iconClass} text-orange-600`} />;
+    return <FileText className={`${iconClass} text-gray-600`} />;
+  };
 
   const handleSaveNotes = () => {
     alert('Đã lưu ghi chú!');
@@ -91,21 +210,19 @@ const MeetingDetailPage = () => {
                 <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-4">
                   <button
                     onClick={() => setIsMicOn(!isMicOn)}
-                    className={`p-4 rounded-full transition-colors ${
-                      isMicOn ? 'bg-gray-700 hover:bg-gray-600' : 'bg-red-600 hover:bg-red-700'
-                    }`}
+                    className={`p-4 rounded-full transition-colors ${isMicOn ? 'bg-gray-700 hover:bg-gray-600' : 'bg-red-600 hover:bg-red-700'
+                      }`}
                   >
                     {isMicOn ? <Mic size={24} /> : <MicOff size={24} />}
                   </button>
                   <button
                     onClick={() => setIsVideoOn(!isVideoOn)}
-                    className={`p-4 rounded-full transition-colors ${
-                      isVideoOn ? 'bg-gray-700 hover:bg-gray-600' : 'bg-red-600 hover:bg-red-700'
-                    }`}
+                    className={`p-4 rounded-full transition-colors ${isVideoOn ? 'bg-gray-700 hover:bg-gray-600' : 'bg-red-600 hover:bg-red-700'
+                      }`}
                   >
                     {isVideoOn ? <Video size={24} /> : <VideoOff size={24} />}
                   </button>
-                  <button 
+                  <button
                     onClick={() => navigate('/')} // rời cuộc họp → về Home
                     className="px-6 py-4 bg-red-600 hover:bg-red-700 rounded-full font-semibold transition-colors"
                   >
@@ -140,7 +257,7 @@ const MeetingDetailPage = () => {
           <div className="space-y-6">
             <div className="bg-white rounded-lg shadow-md p-6">
               <h2 className="text-lg font-bold text-gray-800 mb-4">Thông tin cuộc họp</h2>
-              
+
               <div className="space-y-4">
                 <div className="flex items-start">
                   <Calendar className="text-red-600 mr-3 mt-1" size={20} />
@@ -187,25 +304,76 @@ const MeetingDetailPage = () => {
             </div>
 
             <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-lg font-bold text-gray-800 mb-4">Tài liệu</h2>
+              <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center justify-between">
+                <span>Tài liệu</span>
+                {loadingDocs && (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600"></div>
+                )}
+              </h2>
+
               <div className="space-y-3">
-                {meeting.file_rev && (
-                  <div className="p-3 bg-blue-50 rounded-lg">
-                    <p className="text-xs text-gray-500 mb-1">Tài liệu được phát</p>
-                    <p className="text-sm">{meeting.file_rev}</p>
-                  </div>
-                )}
-                {meeting.file_pre && (
-                  <div className="p-3 bg-green-50 rounded-lg">
-                    <p className="text-xs text-gray-500 mb-1">Tài liệu chuẩn bị</p>
-                    <p className="text-sm">{meeting.file_pre}</p>
-                  </div>
-                )}
-                {!meeting.file_rev && !meeting.file_pre && (
+                {loadingDocs ? (
+                  <p className="text-sm text-gray-500 text-center py-4">Đang tải tài liệu...</p>
+                ) : documents.length > 0 ? (
+                  documents.map((doc) => (
+                    <div
+                      key={doc.documentId}
+                      className="p-3 border border-gray-200 rounded-lg hover:border-red-300 transition-colors"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-start space-x-3 flex-1">
+                          {getFileIcon(doc.fileName)}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-800 truncate">
+                              {doc.fileName}
+                            </p>
+                            <div className="flex items-center space-x-2 mt-1">
+                              {/* Chỉ hiển thị visibility nếu có */}
+                              {doc.visibility && (
+                                <span className={`text-xs px-2 py-0.5 rounded ${doc.visibility === 'Chung'
+                                    ? 'bg-blue-100 text-blue-700'
+                                    : 'bg-purple-100 text-purple-700'
+                                  }`}>
+                                  {doc.visibility}
+                                </span>
+                              )}
+
+                              {/* Chỉ hiển thị uploadDate nếu có */}
+                              {doc.uploadDate && (
+                                <p className="text-xs text-gray-400">
+                                  {new Date(doc.uploadDate).toLocaleDateString('vi-VN')}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex space-x-2 ml-2">
+                          <button
+                            onClick={() => handleViewDocument(doc.documentId, doc.fileName)}
+                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Xem"
+                          >
+                            <Eye size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleDownloadDocument(doc.documentId, doc.fileName)}
+                            className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                            title="Tải xuống"
+                          >
+                            <Download size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
                   <p className="text-sm text-gray-500 text-center py-4">Chưa có tài liệu</p>
                 )}
               </div>
             </div>
+
+
 
             <div className="bg-white rounded-lg shadow-md p-6">
               <h2 className="text-lg font-bold text-gray-800 mb-4">Trạng thái</h2>
