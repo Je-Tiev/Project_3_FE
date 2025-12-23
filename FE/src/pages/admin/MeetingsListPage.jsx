@@ -11,8 +11,8 @@ const MeetingsListPage = ({ onCreateMeeting }) => {
   const [startDateFilter, setStartDateFilter] = useState('');
   const [selectedMeetingId, setSelectedMeetingId] = useState(null);
   const [editMeeting, setEditMeeting] = useState(null);
-  const [toast, setToast] = useState(null); // { message: '', type: 'success'|'error' }
-  const [deleteMeetingId, setDeleteMeetingId] = useState(null); // id meeting muốn xóa
+  const [toast, setToast] = useState(null);
+  const [deleteMeetingId, setDeleteMeetingId] = useState(null);
 
   const statusMap = {
     Scheduled: 'not_started',
@@ -22,28 +22,20 @@ const MeetingsListPage = ({ onCreateMeeting }) => {
     Postponed: 'postponed'
   };
 
-  // Toast helper
   const showToast = (message, type = 'success', duration = 3000) => {
     setToast({ message, type });
     setTimeout(() => setToast(null), duration);
   };
 
-  // Convert ISO sang "YYYY-MM-DDTHH:mm" cho input datetime-local theo giờ Việt Nam
   const toLocalDateTimeInput = (iso) => {
     if (!iso) return "";
     const date = new Date(iso);
     const utc = date.getTime() + date.getTimezoneOffset() * 60000;
     const vnTime = new Date(utc + 7 * 3600 * 1000);
     const pad = (n) => n.toString().padStart(2, '0');
-    const YYYY = vnTime.getFullYear();
-    const MM = pad(vnTime.getMonth() + 1);
-    const DD = pad(vnTime.getDate());
-    const HH = pad(vnTime.getHours());
-    const mm = pad(vnTime.getMinutes());
-    return `${YYYY}-${MM}-${DD}T${HH}:${mm}`;
+    return `${vnTime.getFullYear()}-${pad(vnTime.getMonth() + 1)}-${pad(vnTime.getDate())}T${pad(vnTime.getHours())}:${pad(vnTime.getMinutes())}`;
   };
 
-  // Convert từ input datetime-local sang ISO để gửi API
   const fromLocalDateTimeInput = (localValue) => {
     const localDate = new Date(localValue);
     return localDate.toISOString();
@@ -51,14 +43,12 @@ const MeetingsListPage = ({ onCreateMeeting }) => {
 
   const formatDate = (iso) => {
     if (!iso) return "";
-    const dateObj = new Date(iso);
-    return dateObj.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+    return new Date(iso).toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
   };
 
   const formatTime = (iso) => {
     if (!iso) return "";
-    const dateObj = new Date(iso);
-    return dateObj.toLocaleTimeString('vi-VN', { 
+    return new Date(iso).toLocaleTimeString('vi-VN', { 
       hour: '2-digit', 
       minute: '2-digit', 
       hour12: false, 
@@ -66,7 +56,6 @@ const MeetingsListPage = ({ onCreateMeeting }) => {
     });
   };
 
-  // Load meetings
   useEffect(() => {
     const fetchMeetings = async () => {
       try {
@@ -95,7 +84,6 @@ const MeetingsListPage = ({ onCreateMeeting }) => {
     fetchMeetings();
   }, []);
 
-  // Filter meetings
   useEffect(() => {
     const filtered = meetings.filter(m => {
       const matchStatus = statusFilter === 'all' || m.status === statusFilter;
@@ -107,12 +95,7 @@ const MeetingsListPage = ({ onCreateMeeting }) => {
   }, [statusFilter, roomFilter, startDateFilter, meetings]);
 
   if (selectedMeetingId) {
-    return (
-      <MeetingDetailsPage 
-        meetingId={selectedMeetingId} 
-        onBack={() => setSelectedMeetingId(null)} 
-      />
-    );
+    return <MeetingDetailsPage meetingId={selectedMeetingId} onBack={() => setSelectedMeetingId(null)} />;
   }
 
   const getStatusBadge = (status) => {
@@ -123,11 +106,7 @@ const MeetingsListPage = ({ onCreateMeeting }) => {
       postponed: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Postponed' }
     };
     const c = config[status] || config.not_started;
-    return (
-      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${c.bg} ${c.text}`}>
-        {c.label}
-      </span>
-    );
+    return <span className={`px-3 py-1 rounded-full text-xs font-semibold ${c.bg} ${c.text}`}>{c.label}</span>;
   };
 
   const handleSaveEdit = async () => {
@@ -142,67 +121,42 @@ const MeetingsListPage = ({ onCreateMeeting }) => {
           location: editMeeting.location
         }),
       });
-      setMeetings(prev =>
-        prev.map(m => m.id === editMeeting.id ? { ...m, ...editMeeting } : m)
-      );
-      showToast("Cập nhật meeting thành công!", "success");
+      setMeetings(prev => prev.map(m => m.id === editMeeting.id ? { ...m, ...editMeeting } : m));
+      showToast("Cập nhật meeting thành công!");
       setEditMeeting(null);
     } catch (err) {
-      console.error(err);
       showToast("Cập nhật meeting thất bại!", "error");
     }
   };
 
   return (
     <div className="p-6 relative">
-      {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold text-text">Meetings List</h1>
-        <button
-         onClick={onCreateMeeting}
-         className="bg-primary hover:bg-primary-dark text-white px-6 py-2 rounded-button font-semibold flex items-center gap-2 transition-colors">
+        <button onClick={onCreateMeeting} className="bg-primary hover:bg-primary-dark text-white px-6 py-2 rounded font-semibold flex items-center gap-2">
           <Plus className="w-5 h-5" /> Create New Meeting
         </button>
       </div>
 
       {/* Filters */}
-      <div className="bg-white border border-secondary-dark rounded-lg p-4 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-text mb-2">Status</label>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full px-4 py-2 border border-secondary-dark rounded-button text-text focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              <option value="all">All Status</option>
-              <option value="not_started">Upcoming</option>
-              <option value="ongoing">Ongoing</option>
-              <option value="completed">Completed</option>
-              <option value="postponed">Postponed</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-text mb-2">Room</label>
-            <input
-              type="text"
-              value={roomFilter}
-              onChange={(e) => setRoomFilter(e.target.value)}
-              placeholder="Filter by room"
-              className="w-full px-4 py-2 border border-secondary-dark rounded-button text-text focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-text mb-2">Start Date</label>
-            <input
-              type="date"
-              value={startDateFilter}
-              onChange={(e) => setStartDateFilter(e.target.value)}
-              className="w-full px-4 py-2 border border-secondary-dark rounded-button text-text focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-          </div>
+      <div className="bg-white border border-secondary-dark rounded-lg p-4 mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label className="block text-sm font-medium mb-2">Status</label>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-full px-4 py-2 border rounded">
+            <option value="all">All Status</option>
+            <option value="not_started">Upcoming</option>
+            <option value="ongoing">Ongoing</option>
+            <option value="completed">Completed</option>
+            <option value="postponed">Postponed</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-2">Room</label>
+          <input type="text" value={roomFilter} onChange={(e) => setRoomFilter(e.target.value)} placeholder="Filter by room" className="w-full px-4 py-2 border rounded" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-2">Start Date</label>
+          <input type="date" value={startDateFilter} onChange={(e) => setStartDateFilter(e.target.value)} className="w-full px-4 py-2 border rounded" />
         </div>
       </div>
 
@@ -213,6 +167,8 @@ const MeetingsListPage = ({ onCreateMeeting }) => {
             <thead className="bg-secondary">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-text-light uppercase">Date</th>
+                {/* CỘT MỚI: TITLE */}
+                <th className="px-6 py-3 text-left text-xs font-semibold text-text-light uppercase">Title</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-text-light uppercase">Time</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-text-light uppercase">Room</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-text-light uppercase">Host</th>
@@ -229,56 +185,36 @@ const MeetingsListPage = ({ onCreateMeeting }) => {
                   onClick={() => setSelectedMeetingId(meeting.id)}
                   className={`${index % 2 === 0 ? 'bg-white' : 'bg-secondary'} cursor-pointer hover:bg-primary/10 transition-colors`}
                 >
-                  <td className="px-6 py-4 text-sm text-text">{formatDate(meeting.startTimeISO)}</td>
-                  <td className="px-6 py-4 text-sm text-text">{formatTime(meeting.startTimeISO)}</td>
+                  <td className="px-6 py-4 text-sm text-text whitespace-nowrap">{formatDate(meeting.startTimeISO)}</td>
+                  
+                  {/* HIỂN THỊ TITLE */}
+                  <td className="px-6 py-4 text-sm font-semibold text-text truncate max-w-[200px]" title={meeting.title}>
+                    {meeting.title || 'N/A'}
+                  </td>
+
+                  <td className="px-6 py-4 text-sm text-text whitespace-nowrap">{formatTime(meeting.startTimeISO)}</td>
                   <td className="px-6 py-4 text-sm text-text">{meeting.location || 'N/A'}</td>
                   <td className="px-6 py-4 text-sm text-text">{meeting.organizer || 'N/A'}</td>
                   <td className="px-6 py-4 text-sm">
                     {meeting.file_rev || meeting.file_pre ? (
                       <span className="text-primary flex items-center gap-1">
-                        <FileText className="w-4 h-4" />
-                        {[meeting.file_rev, meeting.file_pre].filter(Boolean).length} files
+                        <FileText className="w-4 h-4" /> {[meeting.file_rev, meeting.file_pre].filter(Boolean).length} files
                       </span>
-                    ) : (
-                      <span className="text-text-light">No documents</span>
-                    )}
+                    ) : <span className="text-text-light">No documents</span>}
                   </td>
                   <td className="px-6 py-4">{getStatusBadge(meeting.status)}</td>
                   <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-2">
-                      <button
-                        className="p-2 text-primary hover:bg-secondary rounded-button"
-                        title="View"
-                        onClick={() => setSelectedMeetingId(meeting.id)}
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-
-                      <button
-                        className="p-2 text-primary hover:bg-secondary rounded-button"
-                        title="Edit"
-                        onClick={() => setEditMeeting(meeting)}
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-
-                      <button
-                        className="p-2 text-red-600 hover:bg-secondary rounded-button"
-                        title="Delete"
-                        onClick={() => setDeleteMeetingId(meeting.id)}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <button className="p-2 text-primary hover:bg-secondary rounded" onClick={() => setSelectedMeetingId(meeting.id)}><Eye size={16}/></button>
+                      <button className="p-2 text-primary hover:bg-secondary rounded" onClick={() => setEditMeeting(meeting)}><Edit size={16}/></button>
+                      <button className="p-2 text-red-600 hover:bg-secondary rounded" onClick={() => setDeleteMeetingId(meeting.id)}><Trash2 size={16}/></button>
                     </div>
                   </td>
                 </tr>
               ))}
-
               {filteredMeetings.length === 0 && (
                 <tr>
-                  <td colSpan="7" className="text-center py-4 text-text-light">
-                    No meetings found.
-                  </td>
+                  <td colSpan="8" className="text-center py-4 text-text-light">No meetings found.</td>
                 </tr>
               )}
             </tbody>
@@ -286,128 +222,71 @@ const MeetingsListPage = ({ onCreateMeeting }) => {
         </div>
       </div>
 
-      {/* Edit Modal */}
+      {/* Edit Modal (Giữ nguyên logic của bạn) */}
       {editMeeting && (
         <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg w-full max-w-lg p-6 relative">
-            <button
-              className="absolute top-4 right-4 p-2 text-gray-500 hover:text-gray-800"
-              onClick={() => setEditMeeting(null)}
-            >
-              <X />
-            </button>
+            <button className="absolute top-4 right-4 p-2 text-gray-500" onClick={() => setEditMeeting(null)}><X /></button>
             <h2 className="text-xl font-bold mb-4">Edit Meeting</h2>
             <div className="space-y-3">
               <div>
-                <label className="block text-sm font-medium text-text mb-1">Title</label>
-                <input
-                  type="text"
-                  value={editMeeting.title}
-                  onChange={(e) => setEditMeeting({ ...editMeeting, title: e.target.value })}
-                  className="w-full px-4 py-2 border border-secondary-dark rounded-button"
-                />
+                <label className="block text-sm font-medium mb-1">Title</label>
+                <input type="text" value={editMeeting.title} onChange={(e) => setEditMeeting({ ...editMeeting, title: e.target.value })} className="w-full px-4 py-2 border rounded" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-text mb-1">Description</label>
-                <textarea
-                  value={editMeeting.description}
-                  onChange={(e) => setEditMeeting({ ...editMeeting, description: e.target.value })}
-                  className="w-full px-4 py-2 border border-secondary-dark rounded-button"
-                  rows={3}
-                />
+                <label className="block text-sm font-medium mb-1">Description</label>
+                <textarea value={editMeeting.description} onChange={(e) => setEditMeeting({ ...editMeeting, description: e.target.value })} className="w-full px-4 py-2 border rounded" rows={3} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-text mb-1">Location</label>
-                <input
-                  type="text"
-                  value={editMeeting.location}
-                  onChange={(e) => setEditMeeting({ ...editMeeting, location: e.target.value })}
-                  className="w-full px-4 py-2 border border-secondary-dark rounded-button"
-                />
+                <label className="block text-sm font-medium mb-1">Location</label>
+                <input type="text" value={editMeeting.location} onChange={(e) => setEditMeeting({ ...editMeeting, location: e.target.value })} className="w-full px-4 py-2 border rounded" />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-text mb-1">Start Time</label>
-                <input
-                  type="datetime-local"
-                  value={toLocalDateTimeInput(editMeeting.startTimeISO)}
-                  onChange={(e) => setEditMeeting({
-                    ...editMeeting,
-                    startTimeISO: fromLocalDateTimeInput(e.target.value)
-                  })}
-                  className="w-full px-4 py-2 border border-secondary-dark rounded-button"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-text mb-1">End Time</label>
-                <input
-                  type="datetime-local"
-                  value={toLocalDateTimeInput(editMeeting.endTimeISO)}
-                  onChange={(e) => setEditMeeting({
-                    ...editMeeting,
-                    endTimeISO: fromLocalDateTimeInput(e.target.value)
-                  })}
-                  className="w-full px-4 py-2 border border-secondary-dark rounded-button"
-                />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Start</label>
+                  <input type="datetime-local" value={toLocalDateTimeInput(editMeeting.startTimeISO)} onChange={(e) => setEditMeeting({...editMeeting, startTimeISO: fromLocalDateTimeInput(e.target.value)})} className="w-full px-4 py-2 border rounded" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">End</label>
+                  <input type="datetime-local" value={toLocalDateTimeInput(editMeeting.endTimeISO)} onChange={(e) => setEditMeeting({...editMeeting, endTimeISO: fromLocalDateTimeInput(e.target.value)})} className="w-full px-4 py-2 border rounded" />
+                </div>
               </div>
             </div>
-
             <div className="mt-4 flex justify-end gap-2">
-              <button
-                className="px-4 py-2 rounded-button bg-gray-300 hover:bg-gray-400"
-                onClick={() => setEditMeeting(null)}
-              >
-                Cancel
-              </button>
-              <button
-                className="px-4 py-2 rounded-button bg-primary text-white hover:bg-primary-dark"
-                onClick={handleSaveEdit}
-              >
-                Save
-              </button>
+              <button className="px-4 py-2 bg-gray-300 rounded" onClick={() => setEditMeeting(null)}>Cancel</button>
+              <button className="px-4 py-2 bg-primary text-white rounded" onClick={handleSaveEdit}>Save</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete Modal */}
       {deleteMeetingId && (
         <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg w-full max-w-md p-6">
             <h2 className="text-lg font-bold mb-4">Xác nhận xóa</h2>
             <p className="mb-6">Bạn có chắc muốn xóa meeting này không?</p>
             <div className="flex justify-end gap-2">
-              <button
-                className="px-4 py-2 rounded-button bg-gray-300 hover:bg-gray-400"
-                onClick={() => setDeleteMeetingId(null)}
-              >
-                Cancel
-              </button>
-              <button
-                className="px-4 py-2 rounded-button bg-red-600 text-white hover:bg-red-700"
-                onClick={async () => {
-                  try {
-                    await apiCall(`/Meetings/${deleteMeetingId}`, { method: 'DELETE' });
-                    setMeetings(prev => prev.filter(m => m.id !== deleteMeetingId));
-                    showToast("Xóa meeting thành công!", "success");
-                  } catch (err) {
-                    console.error(err);
-                    showToast("Xóa meeting thất bại!", "error");
-                  } finally {
-                    setDeleteMeetingId(null);
-                  }
-                }}
-              >
-                Confirm
-              </button>
+              <button className="px-4 py-2 bg-gray-300 rounded" onClick={() => setDeleteMeetingId(null)}>Cancel</button>
+              <button className="px-4 py-2 bg-red-600 text-white rounded" onClick={async () => {
+                try {
+                  await apiCall(`/Meetings/${deleteMeetingId}`, { method: 'DELETE' });
+                  setMeetings(prev => prev.filter(m => m.id !== deleteMeetingId));
+                  showToast("Xóa meeting thành công!");
+                } catch (err) {
+                  showToast("Xóa meeting thất bại!", "error");
+                } finally {
+                  setDeleteMeetingId(null);
+                }
+              }}>Confirm</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Toast Notification */}
+      {/* Toast */}
       {toast && (
-        <div className={`fixed top-5 right-5 px-4 py-2 rounded-lg shadow-lg text-white z-50
-          ${toast.type === 'success' ? 'bg-green-500' : 'bg-red-500'}`}>
+        <div className={`fixed top-5 right-5 px-4 py-2 rounded-lg shadow-lg text-white z-50 ${toast.type === 'success' ? 'bg-green-500' : 'bg-red-500'}`}>
           {toast.message}
         </div>
       )}
