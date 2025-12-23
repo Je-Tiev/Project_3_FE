@@ -1,6 +1,6 @@
 // src/components/meetings/CreateMeetingForm.jsx
 import React, { useEffect, useMemo, useState } from 'react';
-import { Save, X, Plus, Trash2 } from 'lucide-react';
+import { Save, X, Plus, Trash2, Search, Users, UserPlus, FileText, UploadCloud, Paperclip } from 'lucide-react'; 
 import { useApp } from '../../contexts/AppContext';
 import { apiCall } from '../../utils/api';
 
@@ -10,9 +10,17 @@ const CreateMeetingForm = ({ onClose, onSave }) => {
   const [activeSection, setActiveSection] = useState('basic');
   const [message, setMessage] = useState('');
   const [loadingUsers, setLoadingUsers] = useState(false);
-  const [allUsers, setAllUsers] = useState([]); // all users from /Auth/users
+  const [allUsers, setAllUsers] = useState([]);
+  
+  const [activeDeptId, setActiveDeptId] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
-  // departments derived from users: [{ id, name }]
+  useEffect(() => {
+    if (activeSection === 'participants' && allUsers.length === 0) {
+      loadAllUsers();
+    }
+  }, [activeSection, allUsers.length]);
+
   const departments = useMemo(() => {
     const map = new Map();
     allUsers.forEach(u => {
@@ -20,43 +28,49 @@ const CreateMeetingForm = ({ onClose, onSave }) => {
       const name = u.departmentName ?? u.department?.name ?? `Dept ${id}`;
       if (id != null && !map.has(id)) map.set(id, { id, name });
     });
-    return Array.from(map.values()).sort((a, b) => (a.id - b.id));
-  }, [allUsers]);
+    const list = Array.from(map.values()).sort((a, b) => (a.id - b.id));
+    if (list.length > 0 && activeDeptId === null) setActiveDeptId(list[0].id);
+    return list;
+  }, [allUsers, activeDeptId]);
 
-  // which departmentIds are selected
-  const [selectedDeptIds, setSelectedDeptIds] = useState(new Set());
+  const [participants, setParticipants] = useState([]);
 
-  // participants selected (manually or from departments)
-  const [participants, setParticipants] = useState([]); // { userId, name, roleInMeeting, departmentId }
+  const usersInActiveDept = useMemo(() => {
+    return allUsers.filter(u => u.departmentId === activeDeptId);
+  }, [allUsers, activeDeptId]);
 
-  // form state (host auto from currentUser)
+  const filteredParticipants = useMemo(() => {
+    if (!searchTerm) return participants;
+    const lowerSearch = searchTerm.toLowerCase();
+    return participants.filter(p => 
+      p.name?.toLowerCase().includes(lowerSearch) || 
+      (p.departmentName && p.departmentName.toLowerCase().includes(lowerSearch))
+    );
+  }, [participants, searchTerm]);
+
   const [form, setForm] = useState({
     title: '',
     description: '',
     host: currentUser?.fullName || '',
     room: '',
-    date: '', // dd/mm/yyyy
-    time: '', // HH:mm
+    date: '', 
+    time: '',
     type: 'internal',
     documents: [],
-    votingTopics: [],
     notifications: true,
     accessControl: false
   });
 
   useEffect(() => {
-    // keep host synced if currentUser available after mount
     if (currentUser?.fullName) {
       setForm(prev => ({ ...prev, host: currentUser.fullName }));
     }
   }, [currentUser]);
 
-  // Helper: load all users from API
   const loadAllUsers = async () => {
     setLoadingUsers(true);
     try {
       const res = await apiCall('/Auth/users', { method: 'GET' });
-      // API might return array or wrapped object
       const users = Array.isArray(res) ? res : (res.value || res.data || res.users || []);
       setAllUsers(users);
       setMessage(`${users.length} users loaded`);
@@ -69,100 +83,66 @@ const CreateMeetingForm = ({ onClose, onSave }) => {
     }
   };
 
-  // Toggle department checkbox
-  const toggleDept = (deptId) => {
-    setSelectedDeptIds(prev => {
-      const s = new Set(prev);
-      if (s.has(deptId)) s.delete(deptId);
-      else s.add(deptId);
-      return s;
+  const addOneParticipant = (u) => {
+    const p = {
+      userId: u.userId ?? u.id,
+      name: u.fullName ?? u.name ?? u.username,
+      roleInMeeting: 'Member',
+      departmentName: u.departmentName
+    };
+    setParticipants(prev => {
+      if (prev.find(item => String(item.userId) === String(p.userId))) return prev;
+      return [...prev, p];
     });
   };
 
-  // Compute users belonging to currently selected departments
-  const usersInSelectedDepts = useMemo(() => {
-    if (!allUsers.length || selectedDeptIds.size === 0) return [];
-    return allUsers.filter(u => selectedDeptIds.has(u.departmentId));
-  }, [allUsers, selectedDeptIds]);
-
-  // Add users from selected departments into participants list (deduplicate)
-  const addParticipantsFromDepartments = () => {
-    if (selectedDeptIds.size === 0) {
-      setMessage('Vui lòng chọn ít nhất 1 department.');
-      setTimeout(() => setMessage(''), 2000);
-      return;
-    }
-    const usersToAdd = usersInSelectedDepts.map(u => ({
+  const addAllFromDept = () => {
+    const usersToAdd = usersInActiveDept.map(u => ({
       userId: u.userId ?? u.id,
       name: u.fullName ?? u.name ?? u.username,
       roleInMeeting: 'Member',
       departmentName: u.departmentName
     }));
 
-    // ensure host is present (currentUser) and set host role
-    const hostId = currentUser?.userId ?? currentUser?.userId;
-    const hostEntry = hostId ? [{ userId: hostId, name: currentUser.fullName, roleInMeeting: 'Host', departmentId: currentUser.departmentId }] : [];
-
-    // merge dedup
-    const map = new Map();
-    // add existing participants first
-    participants.forEach(p => map.set(String(p.userId), p));
-    // add host explicitly to ensure host role preserved
-    hostEntry.forEach(h => map.set(String(h.userId), { ...h }));
-    // add new users
-    usersToAdd.forEach(u => {
-      const key = String(u.userId);
-      if (!map.has(key)) map.set(key, u);
-      else {
-        // if exists and is Host keep Host, otherwise keep existing
-        const existing = map.get(key);
-        if (existing.roleInMeeting !== 'Host' && u.roleInMeeting === 'Member') {
-          map.set(key, existing);
-        }
-      }
+    setParticipants(prev => {
+      const map = new Map();
+      prev.forEach(p => map.set(String(p.userId), p));
+      usersToAdd.forEach(u => map.set(String(u.userId), u));
+      return Array.from(map.values());
     });
-
-    const merged = Array.from(map.values());
-    setParticipants(merged);
-    setMessage(`${usersToAdd.length} users added from selected departments.`);
-    setTimeout(() => setMessage(''), 2200);
+    setMessage(` Đã thêm nhân sự từ phòng ban.`);
+    setTimeout(() => setMessage(''), 2000);
   };
 
-  // Remove a participant
   const removeParticipant = (userId) => {
     setParticipants(prev => prev.filter(p => String(p.userId) !== String(userId)));
   };
 
-  // manual add (prompt) kept for convenience
-  const manualAddParticipant = () => {
-    const name = prompt('Enter participant full name:');
-    if (!name) return;
-    const userId = Date.now();
-    setParticipants(prev => [...prev, { userId, name, roleInMeeting: 'Member', departmentId: null }]);
-  };
-
-  // handle form changes (host is disabled)
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     setForm(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
   };
 
-  // file upload simple handler
   const handleFileUpload = (e, type) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const url = URL.createObjectURL(file);
     setForm(prev => ({
       ...prev,
-      documents: [...prev.documents, { id: Date.now(), name: file.name, type, url, file }]
+      documents: [...prev.documents, { 
+        id: Date.now(), 
+        name: file.name, 
+        type, 
+        file: file,
+        size: (file.size / 1024).toFixed(1) + ' KB'
+      }]
     }));
+    e.target.value = '';
   };
 
   const removeDocument = (id) => {
     setForm(prev => ({ ...prev, documents: prev.documents.filter(d => d.id !== id) }));
   };
 
-  // validate dmy date
   const isValidDmy = (dmy) => {
     if (!dmy) return false;
     const parts = dmy.split('/');
@@ -173,15 +153,12 @@ const CreateMeetingForm = ({ onClose, onSave }) => {
     return dt && dt.getFullYear() === yyyy && dt.getMonth() === mm - 1 && dt.getDate() === dd;
   };
 
-  // helper to extract meetingId from createMeeting result
   const getMeetingIdFromCreateResult = (result) => {
     if (!result) return null;
     const data = result.data || result;
-    if (!data) return null;
     return data.meetingId ?? data.id ?? data.meeting?.meetingId ?? data.meetingIdCreated ?? null;
   };
 
-  // Save meeting -> create meeting -> post participants (single grouped request)
   const handleSave = async (asDraft = false) => {
     if (!form.title || !form.date || !form.time) {
       setMessage('Please fill required fields: Title, Date, Time');
@@ -196,7 +173,6 @@ const CreateMeetingForm = ({ onClose, onSave }) => {
 
     setMessage('Creating meeting...');
     try {
-      // prepare createMeeting payload to match your AppContext expectation
       const payload = {
         title: form.title,
         description: form.description,
@@ -205,7 +181,7 @@ const CreateMeetingForm = ({ onClose, onSave }) => {
         location: form.room,
         organizer: form.host,
         session: form.time.includes('AM') || parseInt(form.time.split(':')[0], 10) < 12 ? 'Buổi sáng' : 'Buổi chiều',
-        status: asDraft ? 'not_started' : 'not_started',
+        status: 'not_started',
         approved: !asDraft,
         participants: participants.map(p => ({ userId: p.userId, roleInMeeting: p.roleInMeeting })),
         documents: form.documents.map(d => ({ name: d.name, type: d.type }))
@@ -217,37 +193,17 @@ const CreateMeetingForm = ({ onClose, onSave }) => {
         return;
       }
 
-      const meetingId = getMeetingIdFromCreateResult(createResult);
-      // if createMeeting returned meeting object or id inside response.data
-      // fallback: try to read createResult.data?.meetingId || createResult.data?.id
+      const meetingId = getMeetingIdFromCreateResult(createResult) ?? (createResult.data && (createResult.data.meetingId || createResult.data.id));
+
       if (!meetingId) {
-        // try common places
-        const r = createResult.data || createResult;
-        const guessId = r?.meetingId ?? r?.id ?? r?.data?.meetingId ?? null;
-        if (guessId) {
-          // use guess
-        }
-      }
-
-      // final attempt to extract
-      const finalMeetingId = meetingId ?? (createResult.data && (createResult.data.meetingId || createResult.data.id)) ?? null;
-
-      if (!finalMeetingId) {
-        console.warn('Could not determine meetingId from create response', createResult);
-        setMessage('⚠️ Meeting created but cannot determine meetingId to add participants. Please add participants later.');
-        // still call onSave/onClose
+        setMessage('⚠️ Meeting created but cannot determine meetingId.');
         if (onSave) onSave();
         if (onClose) onClose();
         return;
       }
 
-      // Prepare participants payload for POST /Participant/meeting/{meetingId}
-      // The user requested option B: send one request with array of participants
-      // Ensure host is included and marked as Host
-      const hostUserId = currentUser?.userId ?? currentUser?.userId;
+      const hostUserId = currentUser?.userId;
       const hostEntry = hostUserId ? [{ userId: hostUserId, roleInMeeting: 'Host' }] : [];
-
-      // other participants as Member (exclude host if already present)
       const others = participants
         .filter(p => String(p.userId) !== String(hostUserId))
         .map(p => ({ userId: p.userId, roleInMeeting: p.roleInMeeting || 'Member' }));
@@ -255,29 +211,66 @@ const CreateMeetingForm = ({ onClose, onSave }) => {
       const finalParticipantsPayload = [...hostEntry, ...others];
 
       if (finalParticipantsPayload.length > 0) {
-        setMessage('Adding participants to meeting...');
         try {
-          const postRes = await apiCall(`/Participant/meeting/${finalMeetingId}/bulk`, {
+          await apiCall(`/Participant/meeting/${meetingId}/bulk`, {
             method: 'POST',
             body: JSON.stringify({ participants: finalParticipantsPayload }) 
           });
-          setMessage('✅ Meeting created and participants added successfully');
         } catch (err) {
-          console.error('Error adding participants:', err);
-          setMessage('⚠️ Meeting created but failed to add participants.');
+          console.error('Failed to add participants');
         }
       }
 
+      if (form.documents.length > 0) {
+        try {
+          const formData = new FormData();
+          form.documents.forEach((doc) => {
+            if (doc.file) {
+        
+              formData.append('Files', doc.file); 
+            }
+          });
+          formData.append('Visibility', 'Chung');
 
-      // finalize
+          const token = localStorage.getItem('token');
+          const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5075/api';
+
+
+          const uploadUrl = `${BASE_URL}/Document/UploadMultipleDocuments/meeting/${meetingId}/multiple`;
+          
+          console.log("👉 Calling Upload API URL:", uploadUrl);
+
+          const uploadResponse = await fetch(uploadUrl, {
+            method: 'POST',
+            headers: {
+              ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+            },
+            body: formData
+          });
+
+          if (!uploadResponse.ok) {
+            let errorMsg = `Upload failed with status ${uploadResponse.status}`;
+            try {
+              const errorData = await uploadResponse.json();
+              errorMsg = errorData.message || JSON.stringify(errorData);
+            } catch {
+              errorMsg = await uploadResponse.text();
+            }
+            throw new Error(errorMsg);
+          }
+
+          const result = await uploadResponse.json();
+          console.log('✅ Upload tài liệu thành công:', result);
+          
+        } catch (err) {
+          console.error('❌ Lỗi upload file trực tiếp:', err);
+          setMessage('⚠️ Cuộc họp đã tạo nhưng lỗi upload tài liệu: ' + err.message);
+        }
+      }
+
       if (onSave) onSave();
-      // small delay for message UX
-      setTimeout(() => {
-        if (onClose) onClose();
-      }, 800);
-
+      setTimeout(() => { if (onClose) onClose(); }, 800);
     } catch (err) {
-      console.error('Create meeting error', err);
       setMessage('❌ Error creating meeting: ' + (err.message || err));
     }
   };
@@ -288,39 +281,28 @@ const CreateMeetingForm = ({ onClose, onSave }) => {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold text-text">Create New Meeting</h1>
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => handleSave(false)}
-            className="bg-primary hover:bg-primary-dark text-white px-6 py-2 rounded-button font-semibold flex items-center gap-2 transition-colors"
-          >
+          <button onClick={() => handleSave(false)} className="bg-primary hover:bg-primary-dark text-white px-6 py-2 rounded-button font-semibold flex items-center gap-2 transition-colors">
             <Save className="w-5 h-5" /> Save
           </button>
-
-          <button
-            onClick={() => handleSave(true)}
-            className="bg-secondary hover:bg-secondary-dark text-text px-6 py-2 rounded-button font-semibold border border-secondary-dark transition-colors"
-          >
+          <button onClick={() => handleSave(true)} className="bg-secondary hover:bg-secondary-dark text-text px-6 py-2 rounded-button font-semibold border border-secondary-dark transition-colors">
             Save as Draft
           </button>
-
-          <button
-            onClick={onClose}
-            className="bg-white hover:bg-secondary text-text px-6 py-2 rounded-button font-semibold border border-secondary-dark transition-colors flex items-center gap-2"
-          >
+          <button onClick={onClose} className="bg-white hover:bg-secondary text-text px-6 py-2 rounded-button font-semibold border border-secondary-dark transition-colors flex items-center gap-2">
             <X className="w-5 h-5" /> Cancel
           </button>
         </div>
       </div>
 
       {message && (
-        <div className={`mb-4 p-4 rounded-button ${message.startsWith('✅') ? 'bg-green-50 text-green-700 border border-green-200' : message.startsWith('⚠️') ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+        <div className={`mb-4 p-4 rounded-button ${message.startsWith('✅') ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
           {message}
         </div>
       )}
 
-      {/* Sections navigation */}
+      {/* Tabs */}
       <div className="bg-white border border-secondary-dark rounded-lg mb-6">
         <div className="flex border-b border-secondary-dark overflow-x-auto">
-          {['basic', 'participants', 'documents', 'voting', 'advanced'].map(key => (
+          {['basic', 'participants', 'documents'].map(key => (
             <button
               key={key}
               onClick={() => setActiveSection(key)}
@@ -332,129 +314,194 @@ const CreateMeetingForm = ({ onClose, onSave }) => {
         </div>
 
         <div className="p-6">
-          {/* BASIC */}
+          {/* BASIC INFO - GIỮ NGUYÊN */}
           {activeSection === 'basic' && (
             <div className="space-y-6 max-w-3xl">
               <div>
                 <label className="block text-sm font-medium text-text mb-2">Title <span className="text-primary">*</span></label>
-                <input name="title" value={form.title} onChange={handleChange} className="w-full px-4 py-2 border border-secondary-dark rounded-button" placeholder="Enter meeting title" />
+                <input name="title" value={form.title} onChange={handleChange} className="w-full px-4 py-2 border border-secondary-dark rounded-button" />
               </div>
-
               <div>
                 <label className="block text-sm font-medium text-text mb-2">Description</label>
-                <textarea name="description" value={form.description} onChange={handleChange} rows={4} className="w-full px-4 py-2 border border-secondary-dark rounded-button" placeholder="Enter meeting description" />
+                <textarea name="description" value={form.description} onChange={handleChange} rows={4} className="w-full px-4 py-2 border border-secondary-dark rounded-button" />
               </div>
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-text mb-2">Host</label>
                   <input name="host" value={form.host} disabled className="w-full px-4 py-2 border border-secondary-dark bg-gray-100 rounded-button" />
                 </div>
-
                 <div>
                   <label className="block text-sm font-medium text-text mb-2">Room</label>
-                  <input name="room" value={form.room} onChange={handleChange} className="w-full px-4 py-2 border border-secondary-dark rounded-button" placeholder="Enter room" />
+                  <input name="room" value={form.room} onChange={handleChange} className="w-full px-4 py-2 border border-secondary-dark rounded-button" />
                 </div>
-
                 <div>
                   <label className="block text-sm font-medium text-text mb-2">Date <span className="text-primary">*</span></label>
                   <input name="date" value={form.date} onChange={handleChange} className="w-full px-4 py-2 border border-secondary-dark rounded-button" placeholder="dd/mm/yyyy" />
                 </div>
-
                 <div>
                   <label className="block text-sm font-medium text-text mb-2">Time <span className="text-primary">*</span></label>
                   <input name="time" value={form.time} onChange={handleChange} className="w-full px-4 py-2 border border-secondary-dark rounded-button" placeholder="HH:mm" />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-text mb-2">Type</label>
-                  <select name="type" value={form.type} onChange={handleChange} className="w-full px-4 py-2 border border-secondary-dark rounded-button">
-                    <option value="internal">Internal</option>
-                    <option value="external">External</option>
-                    <option value="public">Public</option>
-                  </select>
                 </div>
               </div>
             </div>
           )}
 
-          {/* PARTICIPANTS */}
+          {/* PARTICIPANTS - GIỮ NGUYÊN */}
           {activeSection === 'participants' && (
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <h3 className="text-lg font-semibold text-text">Participants</h3>
-                <div className="flex items-center gap-2">
-                  
-                  <button onClick={loadAllUsers} className="bg-primary hover:bg-primary-dark text-white px-3 py-2 rounded-button">
-                     Load Users
-                  </button>
-                </div>
-              </div>
-
-              {/* Departments multi-select */}
-              <div className="bg-white border border-secondary-dark p-4 rounded-lg">
-                <div className="mb-3 text-sm text-text-light">Select one or more departments to add all members at once</div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 max-h-40 overflow-auto">
-                  {departments.length === 0 && <div className="text-text-light">No departments loaded. Click "Load Users".</div>}
-                  {departments.map(d => (
-                    <label key={d.id} className="flex items-center gap-2 text-sm border p-2 rounded">
-                      <input type="checkbox" checked={selectedDeptIds.has(d.id)} onChange={() => toggleDept(d.id)} />
-                      <div>
-                        <div className="font-medium">{d.name}</div>
-                        <div className="text-xs text-text-light">ID: {d.id}</div>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-
-                <div className="mt-3 flex gap-2">
-                  <button onClick={addParticipantsFromDepartments} className="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-button">Add users from selected departments</button>
-                  <div className="self-center text-sm text-text-light">Selected: {Array.from(selectedDeptIds).join(', ') || '-'}</div>
-                </div>
-              </div>
-
-              {/* Preview users that would be added */}
-              {selectedDeptIds.size > 0 && (
-                <div className="bg-white border border-secondary-dark p-4 rounded-lg">
-                  <div className="mb-2 font-medium">Users from selected departments ({usersInSelectedDepts.length})</div>
-                  <div className="max-h-40 overflow-auto">
-                    {usersInSelectedDepts.map(u => (
-                      <div key={u.userId} className="flex items-center justify-between py-1 border-b last:border-b-0">
-                        <div>
-                          <div className="font-medium">{u.fullName}</div>
-                          <div className="text-xs text-text-light">{u.username} • Dept: {u.departmentId}</div>
-                        </div>
-                        <div className="text-sm text-text-light">ID: {u.userId}</div>
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <div className="lg:col-span-4 border border-secondary-dark rounded-lg overflow-hidden flex flex-col">
+                  <div className="bg-secondary p-3 font-semibold border-b border-secondary-dark flex justify-between">
+                    <span>Phòng ban</span>
+                    {loadingUsers && <span className="text-xs animate-pulse text-primary">Loading...</span>}
+                  </div>
+                  <div className="max-h-72 overflow-y-auto">
+                    {departments.map(d => (
+                      <div 
+                        key={d.id} 
+                        onClick={() => setActiveDeptId(d.id)}
+                        className={`p-3 cursor-pointer border-b last:border-0 transition-colors ${activeDeptId === d.id ? 'bg-primary/10 border-l-4 border-l-primary' : 'hover:bg-gray-50'}`}
+                      >
+                        <div className="font-medium text-sm">{d.name}</div>
                       </div>
                     ))}
                   </div>
                 </div>
-              )}
 
-              {/* Current participants table */}
-              <div>
-                <div className="mb-2 font-medium">Participants to be added ({participants.length})</div>
-                {participants.length === 0 ? (
-                  <p className="text-text-light">No participants selected yet.</p>
-                ) : (
-                  <div className="bg-white border border-secondary-dark rounded-lg overflow-hidden">
-                    <table className="w-full">
-                      <thead className="bg-secondary">
+                <div className="lg:col-span-8 border border-secondary-dark rounded-lg overflow-hidden flex flex-col">
+                  <div className="bg-secondary p-3 font-semibold border-b border-secondary-dark flex justify-between items-center">
+                    <span className="text-sm">Nhân viên</span>
+                    <button onClick={addAllFromDept} className="text-xs bg-primary text-white px-2 py-1 rounded flex items-center gap-1 hover:bg-primary-dark">
+                      <Users className="w-3 h-3" /> Thêm tất cả
+                    </button>
+                  </div>
+                  <div className="max-h-72 overflow-y-auto divide-y divide-gray-100">
+                    {usersInActiveDept.map(u => (
+                      <div key={u.userId} className="p-3 flex justify-between items-center hover:bg-gray-50">
+                        <span className="text-sm font-medium">{u.fullName}</span>
+                        <button onClick={() => addOneParticipant(u)} className="p-1 text-primary hover:bg-primary/10 rounded">
+                          <UserPlus className="w-5 h-5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-6 border-t border-secondary-dark">
+                <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-4">
+                  <h3 className="font-bold">Danh sách tham gia ({participants.length})</h3>
+                  <div className="relative w-full md:w-80">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-light" />
+                    <input 
+                      type="text" 
+                      placeholder="Tìm tên hoặc phòng ban..." 
+                      className="w-full pl-10 pr-4 py-2 border border-secondary-dark rounded-button text-sm"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="bg-white border border-secondary-dark rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-secondary">
+                      <tr>
+                        <th className="px-4 py-3 text-left">Họ tên</th>
+                        <th className="px-4 py-3 text-left">Phòng ban</th>
+                        <th className="px-4 py-3 text-center">Xóa</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-secondary-dark">
+                      {filteredParticipants.map((p, idx) => (
+                        <tr key={idx} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 font-medium">{p.name}</td>
+                          <td className="px-4 py-3 text-text-light">{p.departmentName}</td>
+                          <td className="px-4 py-3 text-center">
+                            <button onClick={() => removeParticipant(p.userId)} className="text-red-500 hover:bg-red-50 p-1 rounded">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* DOCUMENTS - TỐI ƯU UI */}
+          {activeSection === 'documents' && (
+            <div className="space-y-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Upload Section 1 */}
+                <div className="border-2 border-dashed border-secondary-dark rounded-xl p-6 hover:border-primary transition-colors bg-gray-50/50">
+                  <div className="flex flex-col items-center text-center">
+                    <div className="p-3 bg-primary/10 rounded-full mb-3">
+                      <UploadCloud className="w-8 h-8 text-primary" />
+                    </div>
+                    <h4 className="font-bold mb-1">Tài liệu được phát</h4>
+                    <p className="text-xs text-text-light mb-4">PDF, Word, Excel tối đa 20MB</p>
+                    <label className="bg-white border border-secondary-dark px-4 py-2 rounded-button text-sm font-semibold cursor-pointer hover:bg-secondary transition-all flex items-center gap-2 shadow-sm">
+                      <Paperclip className="w-4 h-4" /> Chọn tập tin
+                      <input type="file" hidden onChange={(e) => handleFileUpload(e, 'rev')} />
+                    </label>
+                  </div>
+                </div>
+
+                {/* Upload Section 2 */}
+                <div className="border-2 border-dashed border-secondary-dark rounded-xl p-6 hover:border-primary transition-colors bg-gray-50/50">
+                  <div className="flex flex-col items-center text-center">
+                    <div className="p-3 bg-primary/10 rounded-full mb-3">
+                      <FileText className="w-8 h-8 text-primary" />
+                    </div>
+                    <h4 className="font-bold mb-1">Tài liệu chuẩn bị</h4>
+                    <p className="text-xs text-text-light mb-4">Các tài liệu tham khảo trước buổi họp</p>
+                    <label className="bg-white border border-secondary-dark px-4 py-2 rounded-button text-sm font-semibold cursor-pointer hover:bg-secondary transition-all flex items-center gap-2 shadow-sm">
+                      <Paperclip className="w-4 h-4" /> Chọn tập tin
+                      <input type="file" hidden onChange={(e) => handleFileUpload(e, 'pre')} />
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* Document List Table */}
+              {form.documents.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="font-bold flex items-center gap-2">
+                    <Paperclip className="w-4 h-4 text-primary" /> 
+                    Danh sách tệp tin ({form.documents.length})
+                  </h3>
+                  <div className="border border-secondary-dark rounded-lg overflow-hidden bg-white shadow-sm">
+                    <table className="w-full text-sm">
+                      <thead className="bg-secondary text-text font-semibold">
                         <tr>
-                          <th className="px-6 py-3 text-left text-xs font-semibold text-text-light uppercase">Name</th>
-                          <th className="px-6 py-3 text-left text-xs font-semibold text-text-light uppercase">Role</th>
-                          <th className="px-6 py-3 text-left text-xs font-semibold text-text-light uppercase">Department</th>
-                          <th className="px-6 py-3 text-left text-xs font-semibold text-text-light uppercase">Actions</th>
+                          <th className="px-4 py-3 text-left">Tên tệp</th>
+                          <th className="px-4 py-3 text-left">Phân loại</th>
+                          <th className="px-4 py-3 text-left">Dung lượng</th>
+                          <th className="px-4 py-3 text-center w-20">Xóa</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-secondary-dark">
-                        {participants.map((p, idx) => (
-                          <tr key={String(p.userId) + idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-secondary'}>
-                            <td className="px-6 py-4 text-sm font-medium">{p.name}</td>
-                            <td className="px-6 py-4 text-sm">{p.roleInMeeting}</td>
-                            <td className="px-6 py-4 text-sm">{p.departmentName ?? '-'}</td>
-                            <td className="px-6 py-4">
-                              <button onClick={() => removeParticipant(p.userId)} className="text-red-600 hover:text-red-700">
+                        {form.documents.map(doc => (
+                          <tr key={doc.id} className="hover:bg-gray-50 transition-colors">
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 bg-gray-100 rounded text-gray-500">
+                                  <FileText className="w-4 h-4" />
+                                </div>
+                                <span className="font-medium truncate max-w-[200px]">{doc.name}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${doc.type === 'rev' ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'bg-orange-50 text-orange-600 border border-orange-100'}`}>
+                                {doc.type === 'rev' ? 'Phát hành' : 'Chuẩn bị'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-text-light italic">{doc.size}</td>
+                            <td className="px-4 py-3 text-center">
+                              <button onClick={() => removeDocument(doc.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors">
                                 <Trash2 className="w-4 h-4" />
                               </button>
                             </td>
@@ -463,117 +510,21 @@ const CreateMeetingForm = ({ onClose, onSave }) => {
                       </tbody>
                     </table>
                   </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* DOCUMENTS */}
-          {activeSection === 'documents' && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-text mb-2">Tài liệu được phát</label>
-                  <div className="relative">
-                    <input type="file" id="revUpload" className="hidden" onChange={(e) => handleFileUpload(e, 'rev')} />
-                    <div className="flex">
-                      <input readOnly value="" placeholder="Dán link hoặc bấm + để chọn file" className="w-full pr-12 px-4 py-2 border border-secondary-dark rounded-button" />
-                      <button onClick={() => document.getElementById('revUpload').click()} className="ml-2 px-3 rounded bg-gray-100">+</button>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-text mb-2">Tài liệu chuẩn bị</label>
-                  <div className="relative">
-                    <input type="file" id="preUpload" className="hidden" onChange={(e) => handleFileUpload(e, 'pre')} />
-                    <div className="flex">
-                      <input readOnly value="" placeholder="Dán link hoặc bấm + để chọn file" className="w-full pr-12 px-4 py-2 border border-secondary-dark rounded-button" />
-                      <button onClick={() => document.getElementById('preUpload').click()} className="ml-2 px-3 rounded bg-gray-100">+</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {form.documents.length > 0 && (
-                <div className="bg-white border border-secondary-dark rounded-lg overflow-hidden">
-                  <table className="w-full">
-                    <thead className="bg-secondary">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-semibold text-text-light uppercase">File Name</th>
-                        <th className="px-6 py-3 text-left text-xs font-semibold text-text-light uppercase">Type</th>
-                        <th className="px-6 py-3 text-left text-xs font-semibold text-text-light uppercase">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-secondary-dark">
-                      {form.documents.map((doc, idx) => (
-                        <tr key={doc.id || idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-secondary'}>
-                          <td className="px-6 py-4 text-sm font-medium">{doc.name}</td>
-                          <td className="px-6 py-4 text-sm">{doc.type}</td>
-                          <td className="px-6 py-4">
-                            <button onClick={() => removeDocument(doc.id)} className="text-red-600 hover:text-red-700"><Trash2 className="w-4 h-4" /></button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
                 </div>
               )}
-            </div>
-          )}
-
-          {/* VOTING */}
-          {activeSection === 'voting' && (
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <h3 className="text-lg font-semibold text-text">Voting Topics</h3>
-                <button onClick={() => {
-                  const t = prompt('Enter voting topic:');
-                  if (t) setForm(prev => ({ ...prev, votingTopics: [...prev.votingTopics, { id: Date.now(), topic: t }] }));
-                }} className="bg-primary text-white px-3 py-2 rounded-button">+ Add Topic</button>
-              </div>
-
-              {form.votingTopics.length === 0 ? <p className="text-text-light">No voting topics</p> : (
-                <div className="space-y-2">
-                  {form.votingTopics.map(v => (
-                    <div key={v.id} className="p-3 bg-secondary rounded flex justify-between items-center">
-                      <div>{v.topic}</div>
-                      <button onClick={() => setForm(prev => ({ ...prev, votingTopics: prev.votingTopics.filter(x => x.id !== v.id) }))} className="text-red-600"><Trash2 className="w-4 h-4" /></button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ADVANCED */}
-          {activeSection === 'advanced' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 bg-secondary rounded-lg">
-                <div>
-                  <div className="font-medium">Send Notifications</div>
-                  <div className="text-sm text-text-light">Notify participants about the meeting</div>
-                </div>
-                <input type="checkbox" name="notifications" checked={form.notifications} onChange={handleChange} />
-              </div>
-
-              <div className="flex items-center justify-between p-4 bg-secondary rounded-lg">
-                <div>
-                  <div className="font-medium">Access Control</div>
-                  <div className="text-sm text-text-light">Restrict access to authorized users only</div>
-                </div>
-                <input type="checkbox" name="accessControl" checked={form.accessControl} onChange={handleChange} />
-              </div>
             </div>
           )}
         </div>
       </div>
 
       {/* Footer */}
-      <div className="bg-white border-t border-secondary-dark sticky bottom-0 left-0 right-0 p-4 flex justify-end gap-3 shadow-lg mt-6">
-        <button onClick={() => handleSave(false)} className="bg-primary hover:bg-primary-dark text-white px-6 py-2 rounded-button flex items-center gap-2"><Save className="w-5 h-5" /> Save & Create Meeting</button>
-        <button onClick={() => handleSave(true)} className="bg-secondary hover:bg-secondary-dark text-text px-6 py-2 rounded-button border border-secondary-dark">Save as Draft</button>
-        <button onClick={onClose} className="bg-white hover:bg-secondary text-text px-6 py-2 rounded-button border border-secondary-dark flex items-center gap-2"><X className="w-5 h-5" /> Cancel</button>
+      <div className="bg-white border-t border-secondary-dark sticky bottom-0 p-4 flex justify-end gap-3 shadow-lg">
+        <button onClick={() => handleSave(false)} className="bg-primary hover:bg-primary-dark text-white px-6 py-2 rounded-button flex items-center gap-2 font-semibold transition-all shadow-md">
+          <Save className="w-5 h-5" /> Save & Create
+        </button>
+        <button onClick={onClose} className="bg-white hover:bg-gray-50 text-text px-6 py-2 rounded-button border border-secondary-dark font-semibold transition-all">
+          Cancel
+        </button>
       </div>
     </div>
   );
