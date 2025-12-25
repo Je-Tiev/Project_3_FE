@@ -47,6 +47,7 @@ export const AppProvider = ({ children }) => {
         const dayOfWeek = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'][startDate.getDay()];
         return {
           id: m.meetingId,
+          meetingId: m.meetingId,
           title: m.title,
           description: m.description || '',
           startTime: m.startTime,
@@ -57,12 +58,11 @@ export const AppProvider = ({ children }) => {
           dayOfWeek: dayOfWeek,
           session: startDate.getHours() < 12 ? 'Buổi sáng' : 'Buổi chiều',
           time: startDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-          organizer: '',
-          file_rev: '',
-          file_pre: '',
+          file_rev: m.file_rev || '',
+        file_rev_url: m.file_rev_url || '',  // ← QUAN TRỌNG cho link download
+        file_pre: m.file_pre || '',
+        file_pre_url: m.file_pre_url || '',  // ← QUAN TRỌNG cho link download
           approved: m.status === 0,
-          roles: ['Dự họp'],
-          viewStatus: 'Chưa xem'
         };
       });
       setMeetings(convertedMeetings);

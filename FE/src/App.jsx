@@ -6,8 +6,9 @@ import LoginPage from './pages/LoginPage';
 import HomePage from './pages/HomePage';
 import MeetingDetailPage from './pages/MeetingDetailPage';
 import MeetingDetailsPage from './pages/admin/MeetingDetailsPage';
-import MeetingLobby from './pages/MeetingLobby';
 import AdminLayout from './pages/admin/AdminLayout';
+import MeetingPreJoinPage from './pages/MeetingPreJoinPage';
+import MeetingDocumentsPage from './pages/MeetingDocumentsPage';
 
 const AppContent = () => {
   const { isAuthenticated, currentUser } = useApp();
@@ -23,26 +24,25 @@ const AppContent = () => {
   }
 
   // Nếu là Admin
-  // Nếu là Admin
-if (currentUser?.role === 'Admin') {
-  return (
-    <Routes>
-      {/* Admin layout */}
-      <Route path="/admin/*" element={<AdminLayout />} />
+  if (currentUser?.role === 'Admin') {
+    return (
+      <Routes>
+        {/* Admin layout */}
+        <Route path="/admin/*" element={<AdminLayout />} />
 
-      <Route path="/meeting/:meetingId/lobby" element={<MeetingLobby />} />
+        <Route path="/meeting/:meetingId/lobby" element={<MeetingLobby />} />
 
-      {/* Chi tiết meeting trong admin */}
-      <Route path="/admin/meeting/:meetingId" element={<MeetingDetailsPage />} />
+        {/* Chi tiết meeting trong admin */}
+        <Route path="/admin/meeting/:meetingId" element={<MeetingDetailsPage />} />
 
-      {/* Admin vẫn được join meeting như user */}
-      <Route path="/meeting/:meetingId" element={<MeetingDetailPage />} />
+        {/* Admin vẫn được join meeting như user */}
+        <Route path="/meeting/:meetingId" element={<MeetingDetailPage />} />
 
-      {/* Các route khác → về admin */}
-      <Route path="*" element={<Navigate to="/admin" replace />} />
-    </Routes>
-  );
-}
+        {/* Các route khác → về admin */}
+        <Route path="*" element={<Navigate to="/admin" replace />} />
+      </Routes>
+    );
+  }
 
 
   // Nếu là User
@@ -55,6 +55,11 @@ if (currentUser?.role === 'Admin') {
 
       {/* Sai link → về trang chủ */}
       <Route path="*" element={<Navigate to="/" replace />} />
+
+      <Route path="/meeting/:meetingId/documents" element={<MeetingDocumentsPage />} />\
+      <Route path="/meeting/:meetingId/prejoin" element={<MeetingPreJoinPage />} />
+      <Route path="/meeting/:meetingId" element={<MeetingDetailPage />} />
+
     </Routes>
   );
 };

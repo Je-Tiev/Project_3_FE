@@ -14,27 +14,21 @@ const LoginPage = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    // console.log('--- BẮT ĐẦU handleSubmit ---'); // <-- DEBUG
     setError('');
     setLoading(true);
 
     try {
-      // console.log('Đang gọi hàm login() với:', username, password); // <-- DEBUG
       const result = await login(username, password);
-      // console.log('Hàm login() trả về:', result); // <-- DEBUG
 
       if (result.success) {
-        // console.log('ĐĂNG NHẬP THÀNH CÔNG, đang chuyển hướng...'); // <-- DEBUG
         navigate('/'); // Chuyển sang trang chủ sau khi đăng nhập thành công
       } else {
         console.log('ĐĂNG NHẬP THẤT BẠI:', result.message); // <-- DEBUG
         setError(result.message || 'Đăng nhập thất bại');
       }
     } catch (err) {
-      // console.error('LỖI TRONG handleSubmit:', err); // <-- DEBUG
       setError('Lỗi kết nối: ' + (err.message || 'Không thể kết nối đến server'));
     } finally {
-      // console.log('--- KẾT THÚC handleSubmit ---'); // <-- DEBUG
       setLoading(false);
     }
   };
@@ -106,12 +100,6 @@ const LoginPage = () => {
             {loading ? 'Đang đăng nhập...' : 'Đăng Nhập'}
           </button>
         </form>
-{/* 
-        <div className="mt-6 p-4 bg-blue-50 rounded-xl">
-          <p className="text-sm text-blue-800 font-semibold mb-2">Tài khoản demo:</p>
-          <p className="text-xs text-blue-600">• Admin: admin / 1234</p>
-          <p className="text-xs text-blue-600">• User: user / 1234</p>
-        </div> */}
       </div>
     </div>
   );
