@@ -3,6 +3,8 @@ import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useApp } from "../contexts/AppContext";
 import { useMeetingWithWebRTC } from "../hook/useMeeting";
 import VideoTile from "../components/VideoTile";
+import { BarChart2 } from 'lucide-react';
+import PollsPanel from '../components/PollsPanel';
 import { Mic, MicOff, Video, VideoOff, Share2, PhoneOff, FileText, Download, Eye, File } from "lucide-react";
 import { apiCall } from '../utils/api';
 
@@ -18,6 +20,7 @@ export default function MeetingDetailPage() {
   const [showDocuments, setShowDocuments] = useState(false);
   const [documents, setDocuments] = useState([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
+  const [showPolls, setShowPolls] = useState(false);
 
   const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5075/api';
 
@@ -48,7 +51,7 @@ export default function MeetingDetailPage() {
 
   useEffect(() => {
     const hasPreJoinState = location.state?.initialMicOn !== undefined;
-    
+
     if (!hasPreJoinState) {
       console.log('⚠️ No prejoin state, redirecting to prejoin...');
       navigate(`/meeting/${meetingId}/prejoin`, { replace: true });
@@ -57,32 +60,32 @@ export default function MeetingDetailPage() {
 
   // Join meeting via API
   useEffect(() => {
-  const joinMeeting = async () => {
-    const hasPreJoinState = location.state?.initialMicOn !== undefined;
-    
-    if (!hasPreJoinState) {
-      console.log('⚠️ No prejoin state, skipping join...');
-      return;
-    }
+    const joinMeeting = async () => {
+      const hasPreJoinState = location.state?.initialMicOn !== undefined;
 
-    setJoining(true);
-    try {
-      console.log('🔑 Calling /Meetings/join API...');
-      const response = await apiCall(`/Meetings/join/${meetingId}`, {
-        method: 'GET'
-      });
-      
-      console.log('Join API successful:', response);
-      setJoining(false);  // ← Set false TRONG try block
-    } catch (err) {
-      console.error('Join API failed:', err);
-      setJoinError(err.message || 'Bạn không có quyền tham gia cuộc họp này');
-      setJoining(false);
-    }
-  };
+      if (!hasPreJoinState) {
+        console.log('⚠️ No prejoin state, skipping join...');
+        return;
+      }
 
-  joinMeeting();
-}, [meetingId, location.state]);
+      setJoining(true);
+      try {
+        console.log('🔑 Calling /Meetings/join API...');
+        const response = await apiCall(`/Meetings/join/${meetingId}`, {
+          method: 'GET'
+        });
+
+        console.log('Join API successful:', response);
+        setJoining(false);  // ← Set false TRONG try block
+      } catch (err) {
+        console.error('Join API failed:', err);
+        setJoinError(err.message || 'Bạn không có quyền tham gia cuộc họp này');
+        setJoining(false);
+      }
+    };
+
+    joinMeeting();
+  }, [meetingId, location.state]);
 
   //Fetch documents
   useEffect(() => {
@@ -263,9 +266,8 @@ export default function MeetingDetailPage() {
       <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 flex gap-4 z-50">
         <button
           onClick={toggleMicrophone}
-          className={`p-3 rounded-full ${
-            isMicOn ? "bg-gray-700 hover:bg-gray-600" : "bg-red-500 hover:bg-red-400"
-          }`}
+          className={`p-3 rounded-full ${isMicOn ? "bg-gray-700 hover:bg-gray-600" : "bg-red-500 hover:bg-red-400"
+            }`}
           title={isMicOn ? "Tắt micro" : "Bật micro"}
         >
           {isMicOn ? <Mic size={24} /> : <MicOff size={24} />}
@@ -273,20 +275,18 @@ export default function MeetingDetailPage() {
 
         <button
           onClick={toggleCamera}
-          className={`p-3 rounded-full ${
-            isVideoOn ? "bg-gray-700 hover:bg-gray-600" : "bg-red-500 hover:bg-red-400"
-          }`}
+          className={`p-3 rounded-full ${isVideoOn ? "bg-gray-700 hover:bg-gray-600" : "bg-red-500 hover:bg-red-400"
+            }`}
         >
           {isVideoOn ? <Video size={24} /> : <VideoOff size={24} />}
         </button>
 
         <button
           onClick={isScreenSharing ? stopScreenShare : startScreenShare}
-          className={`p-4 rounded-full transition-all ${
-            isScreenSharing
+          className={`p-4 rounded-full transition-all ${isScreenSharing
               ? "bg-blue-500 hover:bg-blue-600 text-white"
               : "bg-gray-700 hover:bg-gray-600 text-gray-200"
-          }`}
+            }`}
           title={isScreenSharing ? "Dừng chia sẻ" : "Chia sẻ màn hình"}
         >
           <Share2 size={24} />
@@ -294,14 +294,24 @@ export default function MeetingDetailPage() {
 
         <button
           onClick={() => setShowDocuments(!showDocuments)}
-          className={`p-4 rounded-full transition-all ${
-            showDocuments
+          className={`p-4 rounded-full transition-all ${showDocuments
               ? "bg-blue-500 hover:bg-blue-600 text-white"
               : "bg-gray-700 hover:bg-gray-600 text-gray-200"
-          }`}
+            }`}
           title="Tài liệu"
         >
           <FileText size={24} />
+        </button>
+
+        <button
+          onClick={() => setShowPolls(!showPolls)}
+          className={`p-4 rounded-full transition-all ${showPolls
+              ? "bg-purple-500 hover:bg-purple-600 text-white"
+              : "bg-gray-700 hover:bg-gray-600 text-gray-200"
+            }`}
+          title="Biểu quyết"
+        >
+          <BarChart2 size={24} />
         </button>
 
         <button
@@ -314,6 +324,19 @@ export default function MeetingDetailPage() {
           <PhoneOff size={24} />
         </button>
       </div>
+
+      {showPolls && (
+        <>
+          <PollsPanel
+            meetingId={meetingId}
+            onClose={() => setShowPolls(false)}
+          />
+          <div
+            className="fixed inset-0 bg-black/50 z-30"
+            onClick={() => setShowPolls(false)}
+          />
+        </>
+      )}
 
       {/* DOCUMENTS SIDEBAR */}
       {showDocuments && (
@@ -369,7 +392,7 @@ export default function MeetingDetailPage() {
               )}
             </div>
           </div>
-          <div 
+          <div
             className="fixed inset-0 bg-black/50 z-30"
             onClick={() => setShowDocuments(false)}
           />

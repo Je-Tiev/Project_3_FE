@@ -107,7 +107,6 @@ const MeetingTable = () => {
               <th className="px-4 py-3 text-left text-sm font-bold text-gray-700">Thời gian</th>
               <th className="px-4 py-3 text-left text-sm font-bold text-gray-700">Giờ</th>
               <th className="px-4 py-3 text-left text-sm font-bold text-gray-700">Nội dung</th>
-              <th className="px-4 py-3 text-left text-sm font-bold text-gray-700">Địa điểm</th>
               <th className="px-4 py-3 text-left text-sm font-bold text-gray-700">Tài liệu cuộc họp</th>
               <th className="px-4 py-3 text-left text-sm font-bold text-gray-700">Trạng thái</th>
             </tr>
@@ -129,7 +128,6 @@ const MeetingTable = () => {
                 <td className="px-4 py-4 text-sm">
                   {meeting.title}
                 </td>
-                <td className="px-4 py-4 text-sm">{meeting.location}</td>
                 <td className="px-4 py-4 text-sm" onClick={(e) => e.stopPropagation()}>
                   <Link
                     to={`/meeting/${meeting.id}/documents`}
