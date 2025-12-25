@@ -30,8 +30,6 @@ const AppContent = () => {
         {/* Admin layout */}
         <Route path="/admin/*" element={<AdminLayout />} />
 
-        <Route path="/meeting/:meetingId/lobby" element={<MeetingLobby />} />
-
         {/* Chi tiết meeting trong admin */}
         <Route path="/admin/meeting/:meetingId" element={<MeetingDetailsPage />} />
 
