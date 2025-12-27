@@ -13,14 +13,18 @@ const LandingPage = () => {
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center">
-                <span className="text-red-600 font-bold text-xl">BK</span>
+                <img
+  src="https://storage.googleapis.com/hust-files/2023-11-01/5807675312963584/ggg_3.4k.png"
+  alt="HUST logo"
+  className="w-20"
+/>
               </div>
               <div>
                 <h1 className="text-xl font-bold text-white">
                   ĐẠI HỌC BÁCH KHOA HÀ NỘI
                 </h1>
                 <p className="text-red-100 text-sm">
-                  HỆ THỐNG QUẢN TRỊ ĐẠI HỌC TRỰC TUYẾN
+                  HỆ THỐNG PHÒNG HỌP TRỰC TUYẾN
                 </p>
               </div>
             </div>
@@ -136,7 +140,7 @@ const LandingPage = () => {
             © 2025 Đại học Bách khoa Hà Nội - Trường Công nghệ Thông tin và Truyền thông
           </p>
           <p className="text-xs text-gray-500 mt-2">
-            Hệ thống Phòng họp Không giấy
+            Hệ thống Phòng họp Trực tuyến - Phát triển bởi nhóm BKMT
           </p>
         </div>
       </footer>

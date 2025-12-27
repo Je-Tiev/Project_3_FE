@@ -1,18 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Users, FileText, Vote, StickyNote, Download, Eye } from 'lucide-react';
-import { apiCall } from '../../utils/api';
+import { Calendar, Users, FileText, Vote, StickyNote, Download, Eye, Trash2, FileIcon } from 'lucide-react';
+import { apiCall, API_BASE_URL } from '../../utils/api';
 import { useNavigate } from "react-router-dom";
 import { useApp } from '../../contexts/AppContext';
-
 
 const MeetingDetailsPage = ({ meetingId, onBack }) => {
   const [meeting, setMeeting] = useState(null);
   const [participants, setParticipants] = useState([]);
+  const [documents, setDocuments] = useState([]);
   const [activeTab, setActiveTab] = useState('agenda');
   const navigate = useNavigate();
   const { currentUser } = useApp();
-
- 
 
   // Load chi tiết meeting
   useEffect(() => {
@@ -28,7 +26,7 @@ const MeetingDetailsPage = ({ meetingId, onBack }) => {
           time: new Date(data.startTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Ho_Chi_Minh' }),
           location: data.location,
           status: data.status === 'Scheduled' ? 'not_started' : data.status.toLowerCase(),
-          organizer: data.createdByUserName, 
+          organizer: data.createdByUserName,
           file_rev: data.file_rev,
           file_rev_url: data.file_rev_url,
           file_pre: data.file_pre,
@@ -52,7 +50,7 @@ const MeetingDetailsPage = ({ meetingId, onBack }) => {
           name: p.fullName,
           email: p.email,
           role: p.fullName === meeting?.organizer ? 'Host' : 'Member',
-          attendance: 'Present' // default, backend chưa trả về attendance
+          attendance: 'Present'
         })));
       } catch (err) {
         console.error('Lỗi tải danh sách participants:', err);
@@ -60,6 +58,83 @@ const MeetingDetailsPage = ({ meetingId, onBack }) => {
     };
     fetchParticipants();
   }, [meetingId, meeting?.organizer]);
+
+  // Load tài liệu
+  const fetchDocuments = async () => {
+    try {
+      const data = await apiCall(`/Document/GetDocumentsByMeeting/meeting/${meetingId}`, { method: 'GET' });
+      setDocuments(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Lỗi tải tài liệu:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'documents' && meetingId) {
+      fetchDocuments();
+    }
+  }, [activeTab, meetingId]);
+
+
+  const handleFileAction = async (docId, fileName, action = 'view') => {
+    try {
+      // Lấy token từ localStorage (giống cách apiCall hoạt động)
+      const token = localStorage.getItem('token'); 
+      
+      const response = await fetch(`${API_BASE_URL}/Document/DownloadDocument/${docId}/download`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) throw new Error("Không thể truy cập tập tin");
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+
+      if (action === 'download') {
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', fileName);
+        document.body.appendChild(link);
+        link.click();
+        link.parentNode.removeChild(link);
+      } else {
+        // Mở trong tab mới để xem
+        window.open(url, '_blank');
+      }
+
+      // Giải phóng bộ nhớ sau khi xử lý
+      setTimeout(() => window.URL.revokeObjectURL(url), 100);
+    } catch (err) {
+      console.error("Lỗi xử lý file:", err);
+      alert("Lỗi: " + err.message);
+    }
+  };
+
+  const handleDeleteDocument = async (docId) => {
+    if (!window.confirm("Bạn có chắc chắn muốn xóa tài liệu này?")) return;
+    try {
+      await apiCall(`/Document/DeleteDocument/${docId}`, { method: 'DELETE' });
+      // Cập nhật state bằng cách kiểm tra cả documentId và id (đề phòng API trả về khác nhau)
+      setDocuments(prev => prev.filter(d => (d.documentId || d.id) !== docId));
+    } catch (err) {
+      alert("Xóa tài liệu thất bại: " + err.message);
+    }
+  };
+
+  const handleDeleteParticipant = async (userId) => {
+    if (!window.confirm("Bạn có chắc chắn muốn xóa người này khỏi cuộc họp?")) return;
+    try {
+      await apiCall(`/Participant/meeting/${meetingId}/user/${userId}`, { method: 'DELETE' });
+      setParticipants(prev => prev.filter(p => p.id !== userId));
+    } catch (err) {
+      alert("Xóa người tham gia thất bại: " + err.message);
+    }
+  };
+
+  // --- RENDER ---
 
   if (!meeting) return <p className="text-text-light text-center py-8">Loading meeting...</p>;
 
@@ -73,16 +148,10 @@ const MeetingDetailsPage = ({ meetingId, onBack }) => {
 
   return (
     <div className="p-6">
-      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
           {onBack && (
-            <button
-              onClick={onBack}
-              className="text-text-light hover:text-text transition-colors"
-            >
-              ← Back
-            </button>
+            <button onClick={onBack} className="text-text-light hover:text-text transition-colors">← Back</button>
           )}
           <h1 className="text-3xl font-bold text-text">{meeting.title || 'Meeting Details'}</h1>
         </div>
@@ -108,7 +177,7 @@ const MeetingDetailsPage = ({ meetingId, onBack }) => {
       sessionStorage.setItem(`joinInfo_${meetingId}`, JSON.stringify(joinInfo));
 
       // Điều hướng sang MeetingPage
-      navigate(`/meeting/${meetingId}/PreJoin`);
+      navigate(`/meeting/${meetingId}/prejoin`);
     } catch (err) {
       console.error("Join failed:", err);
       alert(err?.message || "Không thể tham gia cuộc họp.");
@@ -119,11 +188,8 @@ const MeetingDetailsPage = ({ meetingId, onBack }) => {
   Join Meeting
 </button>
 
-
-
       </div>
 
-      {/* Tabs */}
       <div className="bg-white border border-secondary-dark rounded-lg mb-6">
         <div className="flex border-b border-secondary-dark overflow-x-auto">
           {tabs.map((tab) => {
@@ -134,9 +200,7 @@ const MeetingDetailsPage = ({ meetingId, onBack }) => {
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
                 className={`flex items-center gap-2 px-6 py-4 font-semibold text-sm transition-colors whitespace-nowrap ${
-                  isActive
-                    ? 'text-primary border-b-2 border-primary'
-                    : 'text-text-light hover:text-text'
+                  isActive ? 'text-primary border-b-2 border-primary' : 'text-text-light hover:text-text'
                 }`}
               >
                 <Icon className="w-5 h-5" />
@@ -147,124 +211,106 @@ const MeetingDetailsPage = ({ meetingId, onBack }) => {
         </div>
 
         <div className="p-6">
-          {/* Agenda */}
           {activeTab === 'agenda' && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-text-light mb-2">Date</label>
-                  <p className="text-text font-medium">{meeting.date}</p>
+             <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-text-light mb-2">Date</label>
+                    <p className="text-text font-medium">{meeting.date}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-text-light mb-2">Time</label>
+                    <p className="text-text font-medium">{meeting.time}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-text-light mb-2">Location/Room</label>
+                    <p className="text-text font-medium">{meeting.location || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-text-light mb-2">Host</label>
+                    <p className="text-text font-medium">{meeting.organizer || 'N/A'}</p>
+                  </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-text-light mb-2">Time</label>
-                  <p className="text-text font-medium">{meeting.time}</p>
+                  <label className="block text-sm font-medium text-text-light mb-2">Description</label>
+                  <p className="text-text">{meeting.description || 'No description available.'}</p>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-text-light mb-2">Location/Room</label>
-                  <p className="text-text font-medium">{meeting.location || 'N/A'}</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-text-light mb-2">Host</label>
-                  <p className="text-text font-medium">{meeting.organizer || 'N/A'}</p>
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-text-light mb-2">Description</label>
-                <p className="text-text">{meeting.description || 'No description available.'}</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-text-light mb-2">Status</label>
-                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                  meeting.status === 'completed' ? 'bg-green-100 text-green-700' :
-                  meeting.status === 'ongoing' ? 'bg-orange-100 text-orange-700' :
-                  'bg-blue-100 text-blue-700'
-                }`}>
-                  {meeting.status === 'completed' ? 'Completed' :
-                   meeting.status === 'ongoing' ? 'Ongoing' : 'Upcoming'}
-                </span>
-              </div>
-            </div>
+             </div>
           )}
 
-          {/* Participants */}
           {activeTab === 'participants' && (
-            <div className="space-y-4">
-              <div className="bg-white border border-secondary-dark rounded-lg overflow-hidden">
-                <table className="w-full">
-                  <thead className="bg-secondary">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-text-light uppercase">Name</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-text-light uppercase">Role</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-text-light uppercase">Attendance Status</th>
+            <div className="bg-white border border-secondary-dark rounded-lg overflow-hidden">
+              <table className="w-full">
+                <thead className="bg-secondary">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-text-light uppercase">Name</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-text-light uppercase">Role</th>
+                    <th className="px-6 py-3 text-right text-xs font-semibold text-text-light uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-secondary-dark">
+                  {participants.map((p) => (
+                    <tr key={p.id} className="hover:bg-secondary/50">
+                      <td className="px-6 py-4 text-sm text-text font-medium">{p.name}</td>
+                      <td className="px-6 py-4 text-sm text-text">{p.role}</td>
+                      <td className="px-6 py-4 text-right">
+                        <button 
+                          onClick={() => handleDeleteParticipant(p.id)}
+                          className="text-red-500 hover:text-red-700 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-secondary-dark">
-                    {participants.map((p, index) => (
-                      <tr key={p.id} className={index % 2 === 0 ? 'bg-white' : 'bg-secondary'}>
-                        <td className="px-6 py-4 text-sm text-text font-medium">{p.name}</td>
-                        <td className="px-6 py-4 text-sm text-text">{p.role}</td>
-                        <td className="px-6 py-4 text-sm">
-                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                            p.attendance === 'Present' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                          }`}>{p.attendance}</span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
 
-          {/* Documents */}
           {activeTab === 'documents' && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {meeting.file_rev && (
-                  <div className="bg-secondary border border-secondary-dark rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="font-semibold text-text">Tài liệu được phát</h3>
-                      {meeting.file_rev_url && (
-                        <a href={meeting.file_rev_url} target="_blank" rel="noreferrer" className="text-primary hover:text-primary-dark flex items-center gap-1 text-sm">
-                          <Eye className="w-4 h-4" /> View
-                        </a>
-                      )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {documents.length > 0 ? documents.map((doc) => {
+                const docId = doc.documentId || doc.id;
+                return (
+                  <div key={docId} className="bg-secondary border border-secondary-dark rounded-lg p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <FileIcon className="w-8 h-8 text-primary" />
+                      <div>
+                        <p className="font-semibold text-text text-sm truncate max-w-[200px]">{doc.fileName}</p>
+                        <p className="text-xs text-text-light">Visibility: {doc.visibility || 'Chung'}</p>
+                      </div>
                     </div>
-                    <p className="text-sm text-text-light">{meeting.file_rev}</p>
-                    {meeting.file_rev_url && (
-                      <button className="mt-2 text-primary hover:text-primary-dark flex items-center gap-1 text-sm">
-                        <Download className="w-4 h-4" /> Download
+                    <div className="flex items-center gap-3">
+                      <button 
+                        onClick={() => handleFileAction(docId, doc.fileName, 'download')}
+                        className="text-primary hover:text-primary-dark"
+                        title="Tải về"
+                      >
+                        <Download className="w-5 h-5" />
                       </button>
-                    )}
-                  </div>
-                )}
-                {meeting.file_pre && (
-                  <div className="bg-secondary border border-secondary-dark rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="font-semibold text-text">Tài liệu chuẩn bị</h3>
-                      {meeting.file_pre_url && (
-                        <a href={meeting.file_pre_url} target="_blank" rel="noreferrer" className="text-primary hover:text-primary-dark flex items-center gap-1 text-sm">
-                          <Eye className="w-4 h-4" /> View
-                        </a>
-                      )}
+                      <button 
+                        onClick={() => handleFileAction(docId, doc.fileName, 'view')}
+                        className="text-primary hover:text-primary-dark"
+                        title="Xem tài liệu"
+                      >
+                        <Eye className="w-5 h-5" />
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteDocument(docId)}
+                        className="text-red-500 hover:text-red-700"
+                        title="Xóa"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
                     </div>
-                    <p className="text-sm text-text-light">{meeting.file_pre}</p>
-                    {meeting.file_pre_url && (
-                      <button className="mt-2 text-primary hover:text-primary-dark flex items-center gap-1 text-sm">
-                        <Download className="w-4 h-4" /> Download
-                      </button>
-                    )}
                   </div>
-                )}
-              </div>
-              {!meeting.file_rev && !meeting.file_pre && (
-                <p className="text-text-light text-center py-8">No documents attached to this meeting.</p>
+                );
+              }) : (
+                <p className="col-span-full text-text-light text-center py-8">No documents found.</p>
               )}
             </div>
           )}
-
-          {/* Voting and Notes tabs remain demo for now */}
-          {/* ... */}
         </div>
       </div>
     </div>

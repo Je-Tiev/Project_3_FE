@@ -6,26 +6,39 @@ import { apiCall } from '../utils/api';
 const AppContext = createContext(null);
 
 export const AppProvider = ({ children }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [currentUser, setCurrentUser] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    const token = localStorage.getItem('token');
+    const user = localStorage.getItem('currentUser');
+    return !!(token && user);
+  });
+
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const savedUser = localStorage.getItem('currentUser');
+      return savedUser ? JSON.parse(savedUser) : null;
+    } catch (error) {
+      console.error('Error parsing user from localStorage:', error);
+      localStorage.removeItem('currentUser');
+      return null;
+    }
+  });
+
   const [deviceStatus, setDeviceStatus] = useState('ready');
   const [currentMeeting, setCurrentMeeting] = useState(null);
   const [meetings, setMeetings] = useState([]);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [activeTab, setActiveTab] = useState('not_started');
   const [searchFilters, setSearchFilters] = useState({
-    startDate: '04/11/2025',
-    endDate: '31/12/2025',
+    startDate: new Date().toISOString().split('T')[0],
+    endDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     filterOption: 'all'
   });
 
-  // Timer cho currentTime
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // Save meetings to localStorage
   useEffect(() => {
     try {
       if (meetings.length > 0) {
@@ -34,13 +47,10 @@ export const AppProvider = ({ children }) => {
     } catch {}
   }, [meetings]);
 
-  //Wrap fetchMeetings với useCallback
   const fetchMeetings = useCallback(async () => {
     try {
-      console.log('🔄 Fetching meetings...');
       const response = await apiCall('/Meetings', { method: 'GET' });
       const meetingsList = response.value || response || [];
-      console.log('📥 Fetched meetings from API:', meetingsList.length, 'items');
       
       const convertedMeetings = meetingsList.map(m => {
         const startDate = new Date(m.startTime);
@@ -59,38 +69,35 @@ export const AppProvider = ({ children }) => {
           session: startDate.getHours() < 12 ? 'Buổi sáng' : 'Buổi chiều',
           time: startDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
           file_rev: m.file_rev || '',
-        file_rev_url: m.file_rev_url || '',  // ← QUAN TRỌNG cho link download
-        file_pre: m.file_pre || '',
-        file_pre_url: m.file_pre_url || '',  // ← QUAN TRỌNG cho link download
+          file_rev_url: m.file_rev_url || '',
+          file_pre: m.file_pre || '',
+          file_pre_url: m.file_pre_url || '',
           approved: m.status === 0,
         };
       });
       setMeetings(convertedMeetings);
     } catch (error) {
-      console.error('❌ Lỗi tải cuộc họp:', error);
+      console.error('Error fetching meetings:', error);
     }
-  }, []); //
+  }, []);
 
-  //  chạy 1 lần khi app mount
   useEffect(() => {
-  const token = localStorage.getItem('token');
-  const savedUser = localStorage.getItem('currentUser');
+    const token = localStorage.getItem('token');
+    const savedUser = localStorage.getItem('currentUser');
 
-  if (token && savedUser) {
-    try {
-      setCurrentUser(JSON.parse(savedUser));
-      setIsAuthenticated(true);
-
-      // GỌI fetchMeetings CHỈ 1 LẦN
-      fetchMeetings();
-    } catch (e) {
-      logout();
+    if (token && savedUser) {
+      try {
+        const user = JSON.parse(savedUser);
+        setCurrentUser(user);
+        setIsAuthenticated(true);
+        fetchMeetings();
+      } catch (e) {
+        console.error('Invalid user data:', e);
+        logout();
+      }
     }
-  }
-}, []); //  <-- FIX QUAN TRỌNG
+  }, [fetchMeetings]);
 
-
-  // Hàm đăng nhập
   const login = async (username, password) => {
     try {
       const response = await apiCall('/auth/login', {
@@ -112,7 +119,6 @@ export const AppProvider = ({ children }) => {
       setCurrentUser(user);
       setIsAuthenticated(true);
       
-      // Fetch meetings sau khi login
       await fetchMeetings();
       
       return { success: true };
@@ -125,11 +131,12 @@ export const AppProvider = ({ children }) => {
     localStorage.removeItem('token');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('currentUser');
+    
     setCurrentUser(null);
     setIsAuthenticated(false);
     setCurrentMeeting(null);
     setDeviceStatus('ready');
-    setMeetings([]); //Clear meetings khi logout
+    setMeetings([]);
   };
 
   const startMeeting = (meeting) => {
@@ -167,7 +174,7 @@ export const AppProvider = ({ children }) => {
       await fetchMeetings();
       return { success: true, data: response };
     } catch (error) {
-      console.error('Lỗi tạo cuộc họp:', error);
+      console.error('Error creating meeting:', error);
       return { success: false, error: error.message };
     }
   };
@@ -176,7 +183,6 @@ export const AppProvider = ({ children }) => {
     setSearchFilters(prev => ({ ...prev, ...filters }));
   };
 
-  //  Wrap getFilteredMeetings với useCallback
   const getFilteredMeetings = useCallback(() => {
     const start = parseDmyToDate(searchFilters.startDate);
     const end = parseDmyToDate(searchFilters.endDate);
@@ -198,7 +204,7 @@ export const AppProvider = ({ children }) => {
       if (endOfDay && mDate > endOfDay) return false;
       return true;
     });
-  }, [meetings, activeTab, searchFilters]); // ✅ Dependencies
+  }, [meetings, activeTab, searchFilters]);
 
   const value = {
     isAuthenticated,

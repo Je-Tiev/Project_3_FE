@@ -5,7 +5,15 @@ import {
   HttpTransportType,
 } from "@microsoft/signalr";
 
-const ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
+const ICE_SERVERS = [
+  { urls: "stun:stun.l.google.com:19302" }, //Dự phòng
+  { urls: "stun:52.221.241.199:3478" },
+  {
+    urls: "turn:52.221.241.199:3478",
+    username: "test",
+    credential: "123456",
+  },
+];
 
 export function useMeetingWithWebRTC(
   meetingId,
@@ -73,7 +81,19 @@ export function useMeetingWithWebRTC(
 
     try {
       if (signal.type === "offer") {
-        await pc.setRemoteDescription(signal.sdp);
+        if (
+          pc.signalingState !== "stable" &&
+          pc.signalingState !== "have-remote-offer"
+        ) {
+          // Nếu đang bận đàm phán việc khác (ví dụ mình cũng đang gửi offer),
+          // ta cần cơ chế "Polite Peer". Nhưng đơn giản nhất là:
+          // Nếu mình là người cũ (đang chờ), mình nhận offer vô tư.
+          console.warn(
+            "Nhận Offer khi đang không stable, có thể gây lỗi glare"
+          );
+          // Vẫn tiếp tục xử lý để xem có cứu được không, hoặc return nếu muốn chặt chẽ
+        }
+        await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         connectionRef.current?.invoke("SendSignal", fromConnectionId, {
@@ -81,9 +101,23 @@ export function useMeetingWithWebRTC(
           sdp: pc.localDescription,
         });
       } else if (signal.type === "answer") {
-        await pc.setRemoteDescription(signal.sdp);
+        if (pc.signalingState === "have-local-offer") {
+          await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+        } else {
+          console.warn(
+            `Bỏ qua Answer vì trạng thái hiện tại là: ${pc.signalingState}`
+          );
+        }
       } else if (signal.type === "ice" && signal.candidate) {
-        await pc.addIceCandidate(signal.candidate);
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+        } catch (err) {
+          console.warn(
+            "Lỗi addIceCandidate (có thể do chưa set remote description):",
+            err
+          );
+          // Có thể queue lại candidate để add sau nếu cần thiết
+        }
       }
     } catch (e) {
       console.warn("Signal Error", e);
@@ -168,16 +202,17 @@ export function useMeetingWithWebRTC(
         setRoomName(info?.roomName);
         setStatus("joined");
       });
-
+      // Nếu mình là người mới => mình gửi offer
       connection.on("ExistingParticipants", async (users) => {
+        setParticipants(users);
         const localStream = localStreamRef.current;
         if (!localStream) {
-          setParticipants(users);
           return;
         }
         for (const u of users) {
           if (!peersRef.current.has(u.connectionId)) {
             const pc = createPeerConnection(u.connectionId, localStream);
+            // Chủ động gửi offer
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
             connectionRef.current?.invoke("SendSignal", u.connectionId, {
@@ -186,22 +221,15 @@ export function useMeetingWithWebRTC(
             });
           }
         }
-        setParticipants(users);
       });
-
+      // Nếu người khác mới vào => họ gửi offer
       connection.on("UserJoined", (u) => {
         setParticipants((prev) => [...prev, u]);
         const localStream = localStreamRef.current;
+
         if (localStream && !peersRef.current.has(u.connectionId)) {
-          const pc = createPeerConnection(u.connectionId, localStream);
-          pc.createOffer()
-            .then((offer) => pc.setLocalDescription(offer))
-            .then(() =>
-              connectionRef.current?.invoke("SendSignal", u.connectionId, {
-                type: "offer",
-                sdp: pc.localDescription,
-              })
-            );
+          // chỉ cần tạo peer connection, chờ họ gửi offer, không cần gọi createOffer
+          createPeerConnection(u.connectionId, localStream);
         }
       });
 
@@ -243,37 +271,85 @@ export function useMeetingWithWebRTC(
   );
   
 
+// ---------- Setup Connection ----------
+useEffect(() => {
+  if (!meetingId) return;
 
-  // ---------- Setup Connection ----------
-  useEffect(() => {
-    if (!meetingId) return;
+  const connection = new HubConnectionBuilder()
+    .withUrl("https://52.221.241.199.nip.io/meetinghub", {
+      accessTokenFactory: () => localStorage.getItem("token"),
+      transport: HttpTransportType.WebSockets,
+    })
+    .withAutomaticReconnect()
+    .build();
 
-    const connection = new HubConnectionBuilder()
-      .withUrl("http://localhost:5075/meetinghub", {
-        accessTokenFactory: () => localStorage.getItem("token"),
-        transport: HttpTransportType.WebSockets,
-      })
-      .withAutomaticReconnect()
-      .build();
+  connectionRef.current = connection;
+  window.meetingHubConnection = connection;
+  
+  registerSignalREvents(connection);
 
-    connectionRef.current = connection;
-    registerSignalREvents(connection);
+  connection
+    .start()
+    .then(() => joinRoom(meetingId))
+    .catch((err) => {
+      console.error(err);
+      setError("Lỗi kết nối Server");
+    });
 
-    connection
-      .start()
-      .then(() => joinRoom(meetingId))
-      .catch((err) => {
-        console.error(err);
-        setError("Lỗi kết nối Server");
-      });
+  return () => {
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((t) => t.stop());
+    }
+    window.meetingHubConnection = null;
+    connection.stop();
+  };
+}, [meetingId, joinRoom, registerSignalREvents]);
 
-    return () => {
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach((t) => t.stop());
-      }
-      connection.stop();
-    };
-  }, [meetingId, joinRoom, registerSignalREvents]);
+
+  // // ---------- Setup Connection ----------
+  // useEffect(() => {
+  //   if (!meetingId) return;
+  //   // NẾU DÙNG TRÊN LOCAL
+  //   // const connection = new HubConnectionBuilder()
+  //   //   .withUrl("http://localhost:5075/meetinghub", {
+  //   //     accessTokenFactory: () => localStorage.getItem("token"),
+  //   //     transport: HttpTransportType.WebSockets,
+  //   //   })
+  //   //   .withAutomaticReconnect()
+  //   //   .build();
+
+  //   // NẾU DÙNG TRÊN SERVER
+  //   const connection = new HubConnectionBuilder()
+  //     .withUrl("https://52.221.241.199.nip.io/meetinghub", {
+  //       accessTokenFactory: () => localStorage.getItem("token"),
+  //       transport: HttpTransportType.WebSockets,
+  //     })
+  //     .withAutomaticReconnect()
+  //     .build();
+
+  //   connectionRef.current = connection;
+  // // ✅ ADD: Expose connection globally for polls
+  // window.meetingHubConnection = connection;
+  // console.log("🌐 SignalR connection exposed globally");
+
+  //   registerSignalREvents(connection);
+
+  //   connection
+  //     .start()
+  //     .then(() => joinRoom(meetingId))
+  //     .catch((err) => {
+  //       console.error(err);
+  //       setError("Lỗi kết nối Server");
+  //     });
+
+  //   return () => {
+  //     if (localStreamRef.current) {
+  //       localStreamRef.current.getTracks().forEach((t) => t.stop());
+  //     }
+  //      window.meetingHubConnection = null;
+  //     connection.stop();
+  //   };
+  // }, [meetingId, joinRoom, registerSignalREvents]);
 
   // ---------- ACTIONS: CAM & MIC ----------
   const toggleCamera = async () => {
@@ -443,12 +519,12 @@ export function useMeetingWithWebRTC(
     roomName,
     isMicOn,
     isVideoOn,
-    isScreenSharing, // Trả về state này
+    isScreenSharing,
     toggleCamera,
     toggleMicrophone,
-    startScreenShare, // Trả về hàm này
-    stopScreenShare, // Trả về hàm này
+    startScreenShare,
+    stopScreenShare,
     sendMessage: (text) =>
       connectionRef.current?.invoke("SendMessage", Number(meetingId), text),
-  }; 
+  };
 }

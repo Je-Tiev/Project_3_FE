@@ -1,5 +1,5 @@
 // src/utils/api.js
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5075/api';
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5075/api';
 
 export const apiCall = async (endpoint, options = {}) => {
   const token = localStorage.getItem('token');

@@ -23,8 +23,11 @@ const LoginPage = () => {
       if (result.success) {
         navigate('/'); // Chuyển sang trang chủ sau khi đăng nhập thành công
       } else {
-        console.log('ĐĂNG NHẬP THẤT BẠI:', result.message); // <-- DEBUG
-        setError(result.message || 'Đăng nhập thất bại');
+         const friendlyMessage = result.message === 'HTTP 401' 
+        ? 'Tên đăng nhập hoặc mật khẩu không chính xác'
+        : result.message || 'Đăng nhập thất bại';
+      
+      setError(friendlyMessage);
       }
     } catch (err) {
       setError('Lỗi kết nối: ' + (err.message || 'Không thể kết nối đến server'));
@@ -34,14 +37,14 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-red-600 to-red-800 flex items-center justify-center p-6">
-      <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md">
+    <div className="min-h-screen bg-gradient-to-br from-purple-600 via-pink-500 to-cyan-400 flex items-center justify-center p-6">
+      <div className="bg-white rounded-3xl shadow-2xl p-10 w-full max-w-lg">
         <div className="text-center mb-8">
           <div className="inline-block bg-red-100 rounded-full p-4 mb-4">
             <Video className="w-16 h-16 text-red-600" />
           </div>
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">Phòng Họp Không Giấy</h1>
-          <p className="text-gray-500">Ủy Ban Nhân Dân Tỉnh</p>
+          <h1 className="text-3xl font-bold text-gray-800 mb-2">ĐẠI HỌC BÁCH KHOA HÀ NỘI</h1>
+          <p className="text-gray-500">HỆ THỐNG PHÒNG HỌP TRỰC TUYẾN</p>
           <p className="text-sm text-gray-400 mt-2">{formatTime(currentTime)}</p>
         </div>
 
