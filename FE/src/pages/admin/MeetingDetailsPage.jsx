@@ -141,9 +141,7 @@ const MeetingDetailsPage = ({ meetingId, onBack }) => {
   const tabs = [
     { key: 'agenda', label: 'Agenda', icon: Calendar },
     { key: 'participants', label: 'Participants', icon: Users },
-    { key: 'documents', label: 'Documents', icon: FileText },
-    { key: 'voting', label: 'Voting', icon: Vote },
-    { key: 'notes', label: 'Notes', icon: StickyNote }
+    { key: 'documents', label: 'Documents', icon: FileText }
   ];
 
   return (
@@ -163,7 +161,6 @@ const MeetingDetailsPage = ({ meetingId, onBack }) => {
 
       console.log("Attempting to join meeting ID:", meetingId);
 
-      // GỌI API JOIN – GET, KHÔNG BODY
       const joinInfo = await apiCall(`/Meetings/join/${meetingId}`, {
         method: "GET",
         headers: {

@@ -8,10 +8,7 @@ const Sidebar = ({ activeMenu, setActiveMenu }) => {
   const menuItems = [
     { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { key: 'meetings', label: 'Meetings', icon: Users },
-    { key: 'rooms', label: 'Rooms', icon: DoorOpen },
     { key: 'users', label: 'Users', icon: Users },
-    { key: 'documents', label: 'Documents', icon: FileText },
-    { key: 'reports', label: 'Reports', icon: BarChart3 },
     { key: 'settings', label: 'Settings', icon: Settings }
   ];
 

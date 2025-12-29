@@ -76,7 +76,7 @@ const CreateMeetingForm = ({ onClose, onSave }) => {
       setMessage(`${users.length} users loaded`);
     } catch (err) {
       console.error('Load users error:', err);
-      setMessage('❌ Lỗi tải danh sách user');
+      setMessage('Lỗi tải danh sách user');
     } finally {
       setLoadingUsers(false);
       setTimeout(() => setMessage(''), 2500);

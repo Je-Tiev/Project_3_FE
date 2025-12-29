@@ -172,7 +172,6 @@ const MeetingsListPage = ({ onCreateMeeting }) => {
                 <th className="px-6 py-3 text-left text-xs font-semibold text-text-light uppercase">Time</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-text-light uppercase">Room</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-text-light uppercase">Host</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-text-light uppercase">Documents</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-text-light uppercase">Status</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-text-light uppercase">Actions</th>
               </tr>
@@ -195,13 +194,6 @@ const MeetingsListPage = ({ onCreateMeeting }) => {
                   <td className="px-6 py-4 text-sm text-text whitespace-nowrap">{formatTime(meeting.startTimeISO)}</td>
                   <td className="px-6 py-4 text-sm text-text">{meeting.location || 'N/A'}</td>
                   <td className="px-6 py-4 text-sm text-text">{meeting.organizer || 'N/A'}</td>
-                  <td className="px-6 py-4 text-sm">
-                    {meeting.file_rev || meeting.file_pre ? (
-                      <span className="text-primary flex items-center gap-1">
-                        <FileText className="w-4 h-4" /> {[meeting.file_rev, meeting.file_pre].filter(Boolean).length} files
-                      </span>
-                    ) : <span className="text-text-light">No documents</span>}
-                  </td>
                   <td className="px-6 py-4">{getStatusBadge(meeting.status)}</td>
                   <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-2">
