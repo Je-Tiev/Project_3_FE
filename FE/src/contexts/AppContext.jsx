@@ -151,17 +151,15 @@ export const AppProvider = ({ children }) => {
 
   const createMeeting = async (payload) => {
     try {
-      const [day, month, year] = payload.date.split('/').map(Number);
-      const [hour, minute] = (payload.time || '08:00').split(':').map(Number);
-      
-      const startTime = new Date(year, month - 1, day, hour, minute);
-      const endTime = new Date(year, month - 1, day, hour + 1, minute);
+      if (!payload.startTime || !payload.endTime) {
+        throw new Error('Missing startTime or endTime');
+    }
       
       const meetingData = {
         title: payload.title,
-        description: payload.location || '',
-        startTime: startTime.toISOString(),
-        endTime: endTime.toISOString(),
+        description: payload.description || '',
+        startTime: payload.startTime, // ISO đã chuẩn
+        endTime: payload.endTime,
         location: payload.location || '',
         participants: payload.participants || []
       };

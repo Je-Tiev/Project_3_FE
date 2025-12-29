@@ -22,16 +22,21 @@ const CreateMeetingForm = ({ onClose, onSave }) => {
   }, [activeSection, allUsers.length]);
 
   const departments = useMemo(() => {
-    const map = new Map();
-    allUsers.forEach(u => {
-      const id = u.departmentId ?? null;
-      const name = u.departmentName ?? u.department?.name ?? `Dept ${id}`;
-      if (id != null && !map.has(id)) map.set(id, { id, name });
-    });
-    const list = Array.from(map.values()).sort((a, b) => (a.id - b.id));
-    if (list.length > 0 && activeDeptId === null) setActiveDeptId(list[0].id);
-    return list;
-  }, [allUsers, activeDeptId]);
+  const map = new Map();
+  allUsers.forEach(u => {
+    const id = u.departmentId ?? null;
+    const name = u.departmentName ?? u.department?.name ?? `Dept ${id}`;
+    if (id != null && !map.has(id)) map.set(id, { id, name });
+  });
+  return Array.from(map.values()).sort((a, b) => a.id - b.id);
+  }, [allUsers]);
+
+useEffect(() => {
+  if (departments.length > 0 && activeDeptId === null) {
+    setActiveDeptId(departments[0].id);
+  }
+}, [departments, activeDeptId]);
+
 
   const [participants, setParticipants] = useState([]);
 
@@ -53,8 +58,10 @@ const CreateMeetingForm = ({ onClose, onSave }) => {
     description: '',
     host: currentUser?.fullName || '',
     room: '',
-    date: '', 
-    time: '',
+    startDate: '',   
+    startTime: '',   
+    endDate: '',   
+    endTime: '',
     type: 'internal',
     documents: [],
     notifications: true,
@@ -153,6 +160,15 @@ const CreateMeetingForm = ({ onClose, onSave }) => {
     return dt && dt.getFullYear() === yyyy && dt.getMonth() === mm - 1 && dt.getDate() === dd;
   };
 
+  const vnDateTimeToUtcIso = (dateStr, timeStr) => {
+  const [dd, mm, yyyy] = dateStr.split('/').map(Number);
+  const [hh, min] = timeStr.split(':').map(Number);
+
+  return new Date(yyyy, mm - 1, dd, hh, min, 0).toISOString()
+
+};
+
+
   const getMeetingIdFromCreateResult = (result) => {
     if (!result) return null;
     const data = result.data || result;
@@ -160,27 +176,42 @@ const CreateMeetingForm = ({ onClose, onSave }) => {
   };
 
   const handleSave = async (asDraft = false) => {
-    if (!form.title || !form.date || !form.time) {
+    if (!form.title ||
+        !form.startDate ||
+        !form.startTime ||
+        !form.endDate ||
+        !form.endTime) {
       setMessage('Please fill required fields: Title, Date, Time');
       setTimeout(() => setMessage(''), 2000);
       return;
     }
-    if (!isValidDmy(form.date)) {
+    if (!isValidDmy(form.startDate) || !isValidDmy(form.endDate)) {
       setMessage('Date must be in dd/mm/yyyy format');
       setTimeout(() => setMessage(''), 2000);
       return;
     }
+
+  const startTimeUtc = vnDateTimeToUtcIso(form.startDate, form.startTime);
+  const endTimeUtc = vnDateTimeToUtcIso(form.endDate, form.endTime);
+
+  if (new Date(endTimeUtc) <= new Date(startTimeUtc)) {
+    setMessage('End time must be after start time');
+    setTimeout(() => setMessage(''), 2000);
+    return;
+  }
+  const startHour = parseInt(form.startTime.split(':')[0], 10);
+
 
     setMessage('Creating meeting...');
     try {
       const payload = {
         title: form.title,
         description: form.description,
-        date: form.date,
-        time: form.time,
+        startTime: startTimeUtc,
+        endTime: endTimeUtc,
         location: form.room,
         organizer: form.host,
-        session: form.time.includes('AM') || parseInt(form.time.split(':')[0], 10) < 12 ? 'Buổi sáng' : 'Buổi chiều',
+        session: startHour < 12 ? 'Buổi sáng' : 'Buổi chiều',
         status: 'not_started',
         approved: !asDraft,
         participants: participants.map(p => ({ userId: p.userId, roleInMeeting: p.roleInMeeting })),
@@ -334,14 +365,56 @@ const CreateMeetingForm = ({ onClose, onSave }) => {
                   <label className="block text-sm font-medium text-text mb-2">Room</label>
                   <input name="room" value={form.room} onChange={handleChange} className="w-full px-4 py-2 border border-secondary-dark rounded-button" />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-text mb-2">Date <span className="text-primary">*</span></label>
-                  <input name="date" value={form.date} onChange={handleChange} className="w-full px-4 py-2 border border-secondary-dark rounded-button" placeholder="dd/mm/yyyy" />
+                <div className="grid grid-cols-1 gap-6">
+
+                  {/* START */}
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-text">
+                      Start Date & Time <span className="text-primary">*</span>
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <input
+                        name="startDate"
+                        placeholder="dd/mm/yyyy"
+                        value={form.startDate}
+                        onChange={handleChange}
+                        className="px-4 py-2 border border-secondary-dark rounded-button"
+                      />
+                      <input
+                        type="time"
+                        name="startTime"
+                        value={form.startTime}
+                        onChange={handleChange}
+                        className="px-4 py-2 border border-secondary-dark rounded-button"
+                      />
+                    </div>
+                  </div>
+
+                  {/* END */}
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-text">
+                      End Date & Time <span className="text-primary">*</span>
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <input
+                        name="endDate"
+                        placeholder="dd/mm/yyyy"
+                        value={form.endDate}
+                        onChange={handleChange}
+                        className="px-4 py-2 border border-secondary-dark rounded-button"
+                      />
+                      <input
+                        type="time"
+                        name="endTime"
+                        value={form.endTime}
+                        onChange={handleChange}
+                        className="px-4 py-2 border border-secondary-dark rounded-button"
+                      />
+                    </div>
+                  </div>
+
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-text mb-2">Time <span className="text-primary">*</span></label>
-                  <input name="time" value={form.time} onChange={handleChange} className="w-full px-4 py-2 border border-secondary-dark rounded-button" placeholder="HH:mm" />
-                </div>
+
               </div>
             </div>
           )}

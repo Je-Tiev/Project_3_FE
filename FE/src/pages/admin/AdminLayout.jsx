@@ -4,10 +4,7 @@ import AdminHeader from '../../components/admin/AdminHeader';
 import DashboardPage from './DashboardPage';
 import CreateMeetingForm from '../../components/admin/CreateMeetingForm';
 import MeetingsListPage from './MeetingsListPage';
-import DocumentsPage from './DocumentsPage';
 import UsersPage from './UsersPage';
-import RoomsPage from './RoomsPage';
-import ReportsPage from './ReportsPage';
 import SettingsPage from './SettingsPage';
 
 const AdminLayout = () => {
