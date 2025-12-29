@@ -7,12 +7,12 @@ import {
 
 const ICE_SERVERS = [
   { urls: "stun:stun.l.google.com:19302" }, //Dự phòng
-  { urls: "stun:52.221.241.199:3478" },
-  {
-    urls: "turn:52.221.241.199:3478",
-    username: "test",
-    credential: "123456",
-  },
+ // { urls: "stun:52.221.241.199:3478" },
+  //{
+    //urls: "turn:52.221.241.199:3478",
+    //username: "test",
+    //credential: "123456",
+  //},
 ];
 
 export function useMeetingWithWebRTC(
@@ -276,7 +276,8 @@ useEffect(() => {
   if (!meetingId) return;
 
   const connection = new HubConnectionBuilder()
-    .withUrl("https://52.221.241.199.nip.io/meetinghub", {
+    //.withUrl("https://52.221.241.199.nip.io/meetinghub", {
+    .withUrl("http://localhost:5075/meetinghub", {
       accessTokenFactory: () => localStorage.getItem("token"),
       transport: HttpTransportType.WebSockets,
     })

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import { Video, Mic, X, User, VideoOff, MicOff } from "lucide-react";
 
 export type VideoTileProps = {
@@ -34,32 +34,26 @@ export default function VideoTile({
 
   useEffect(() => {
     const el = videoRef.current;
-
     if (!el || !stream) return;
 
-    // Gán stream vào video
     el.srcObject = stream;
 
-    // ✅ FIXED: Safe play with error handling
     const playPromise = el.play();
-    
     if (playPromise !== undefined) {
-      playPromise.catch((error) => {
-        // Ignore AbortError - normal when component unmounts
-        if (error.name !== 'AbortError') {
-          console.warn("Video play failed:", error.name);
+      playPromise.catch(err => {
+        if (err.name !== "AbortError") {
+          console.warn("Video play failed:", err);
         }
       });
     }
 
-    // ✅ ADDED: Cleanup on unmount
     return () => {
       if (el) {
         el.pause();
         el.srcObject = null;
       }
     };
-  }, [stream, camEnabled]);
+  }, [stream]);
 
   return (
     <div
@@ -67,17 +61,21 @@ export default function VideoTile({
         pinned ? "ring-2 ring-indigo-500 scale-[1.02] z-10" : ""
       }`}
     >
-      {/* Video Area */}
-      <div className="relative w-full h-full min-h-[200px] flex bg-black">
+      {/* ================= VIDEO AREA ================= */}
+      <div className="relative w-full h-full min-h-[200px] flex items-center justify-center bg-black">
+
+        {/* ===== VIDEO ===== */}
         {stream && camEnabled ? (
           <video
             ref={videoRef}
             autoPlay
             playsInline
             muted={isLocal}
-            className={`w-full h-full object-cover ${
-              isLocal && !isScreenSharing ? "scale-x-[-1]" : ""
-            }`}
+            className={`
+              w-full h-full bg-black
+              ${isScreenSharing ? "object-contain" : "object-cover"}
+              ${isLocal && !isScreenSharing ? "-scale-x-100" : ""}
+            `}
           />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center bg-gray-800 text-gray-400 gap-3 animate-in fade-in">
@@ -88,15 +86,15 @@ export default function VideoTile({
           </div>
         )}
 
-        {/* Screen Share Badge */}
+        {/* ===== SCREEN SHARE BADGE ===== */}
         {isScreenSharing && (
           <div className="absolute top-3 left-3 px-2 py-0.5 bg-blue-600/90 backdrop-blur-sm text-white rounded text-xs font-semibold shadow-sm">
             Screen Share
           </div>
         )}
 
-        {/* Top Right Actions */}
-        <div className="absolute top-2 right-2 flex gap-1 opacity-0 hover:opacity-100 transition-opacity p-1 rounded-lg bg-black/20 backdrop-blur-sm group-hover:opacity-100">
+        {/* ===== TOP RIGHT ACTIONS ===== */}
+        <div className="absolute top-2 right-2 flex gap-1 opacity-0 hover:opacity-100 transition-opacity p-1 rounded-lg bg-black/20 backdrop-blur-sm">
           {onPin && (
             <button
               onClick={() => onPin(connectionId)}
@@ -116,15 +114,16 @@ export default function VideoTile({
                 strokeLinecap="round"
                 strokeLinejoin="round"
               >
-                <line x1="12" y1="17" x2="12" y2="22"></line>
-                <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path>
+                <line x1="12" y1="17" x2="12" y2="22" />
+                <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
               </svg>
             </button>
           )}
+
           {!isLocal && onRemove && (
             <button
               onClick={() => onRemove(connectionId)}
-              className="p-1.5 rounded hover:bg-red-500/80 text-white hover:text-white"
+              className="p-1.5 rounded hover:bg-red-500/80 text-white"
               title="Remove User"
             >
               <X size={16} />
@@ -132,10 +131,10 @@ export default function VideoTile({
           )}
         </div>
 
-        {/* Bottom Info Bar */}
+        {/* ===== BOTTOM INFO BAR ===== */}
         <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/90 via-black/60 to-transparent flex items-end justify-between">
           <div className="flex flex-col">
-            <span className="text-white font-semibold text-sm drop-shadow-md">
+            <span className="text-white font-semibold text-sm">
               {fullName} {isLocal && "(Bạn)"}
             </span>
             <span className="text-[10px] text-gray-300 flex items-center gap-1">
@@ -148,16 +147,15 @@ export default function VideoTile({
             </span>
           </div>
 
-          {/* Control Buttons */}
           {(onToggleMic || onToggleCam) && (
             <div className="flex gap-2">
               {onToggleMic && (
                 <button
                   onClick={() => onToggleMic(connectionId, !micEnabled)}
-                  className={`p-2 rounded-full transition-colors ${
+                  className={`p-2 rounded-full ${
                     micEnabled
-                      ? "bg-gray-600/50 hover:bg-gray-500/50 text-white"
-                      : "bg-red-500 hover:bg-red-600 text-white"
+                      ? "bg-gray-600/50 hover:bg-gray-500/50"
+                      : "bg-red-500 hover:bg-red-600"
                   }`}
                 >
                   {micEnabled ? <Mic size={14} /> : <MicOff size={14} />}
@@ -166,10 +164,10 @@ export default function VideoTile({
               {onToggleCam && (
                 <button
                   onClick={() => onToggleCam(connectionId, !camEnabled)}
-                  className={`p-2 rounded-full transition-colors ${
+                  className={`p-2 rounded-full ${
                     camEnabled
-                      ? "bg-gray-600/50 hover:bg-gray-500/50 text-white"
-                      : "bg-red-500 hover:bg-red-600 text-white"
+                      ? "bg-gray-600/50 hover:bg-gray-500/50"
+                      : "bg-red-500 hover:bg-red-600"
                   }`}
                 >
                   {camEnabled ? <Video size={14} /> : <VideoOff size={14} />}
