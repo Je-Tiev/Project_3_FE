@@ -57,12 +57,12 @@ export default function VideoTile({
 
   return (
     <div
-      className={`relative flex flex-col bg-gray-900 rounded-xl overflow-hidden shadow-lg border border-gray-800 transition-all duration-300 ${
+      className={`relative flex flex-col bg-gray-900 rounded-xl overflow-hidden shadow-lg border border-gray-800 transition-all duration-300 h-full w-full ${ // Thêm h-full và w-full
         pinned ? "ring-2 ring-indigo-500 scale-[1.02] z-10" : ""
       }`}
     >
       {/* ================= VIDEO AREA ================= */}
-      <div className="relative w-full h-full min-h-[200px] flex items-center justify-center bg-black">
+      <div className="w-full h-full relative bg-black rounded-xl overflow-hidden flex items-center justify-center"> 
 
         {/* ===== VIDEO ===== */}
         {stream && camEnabled ? (
@@ -72,9 +72,10 @@ export default function VideoTile({
             playsInline
             muted={isLocal}
             className={`
-              w-full h-full bg-black
+              w-full h-full bg-black flex-1
               ${isScreenSharing ? "object-contain" : "object-cover"}
-              ${isLocal && !isScreenSharing ? "-scale-x-100" : ""}
+              style={{ transform: (isLocal && !isScreenSharing) ? 'scaleX(-1)' : 'none' }}
+              
             `}
           />
         ) : (
