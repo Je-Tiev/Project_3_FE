@@ -2,71 +2,57 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { apiCall } from '../utils/api';
 import { BarChart2, X, Check, Plus, Clock, XCircle } from 'lucide-react';
+import { useApp } from '../contexts/AppContext';
 
 export default function PollsPanel({ meetingId, onClose }) {
+  const { currentUser } = useApp();
   const [activePoll, setActivePoll] = useState(null);
   const [loading, setLoading] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newQuestion, setNewQuestion] = useState('');
-  const [votedPolls, setVotedPolls] = useState({}); // Track voted polls locally
-  const [refreshInterval, setRefreshInterval] = useState(null);
+  const [votedPolls, setVotedPolls] = useState({});
   const hubConnectionRef = useRef(null);
-
-  // useEffect(() => {
-  //   fetchActivePoll();
-    
-  //   // Auto refresh every 3 seconds
-  //   const interval = setInterval(fetchActivePoll, 3000);
-  //   setRefreshInterval(interval);
-    
-  //   return () => {
-  //     if (interval) clearInterval(interval);
-  //   };
-  // }, [meetingId]);
-
-
+  const pollIntervalRef = useRef(null);
 
   // Load voted polls from localStorage
   useEffect(() => {
     const saved = localStorage.getItem(`votedPolls_${meetingId}`);
     if (saved) {
-      setVotedPolls(JSON.parse(saved));
+      try {
+        setVotedPolls(JSON.parse(saved));
+      } catch (e) {
+        console.error('Error parsing voted polls:', e);
+      }
     }
   }, [meetingId]);
 
-useEffect(() => {
-    // Get existing SignalR connection from useMeetingWithWebRTC hook
-    // Or create new one if needed
+  // ✅ SignalR listeners - MATCHING BACKEND
+  useEffect(() => {
     const setupSignalR = async () => {
       try {
-        // Check if there's an existing connection
         const existingConnection = window.meetingHubConnection;
         
         if (existingConnection) {
           hubConnectionRef.current = existingConnection;
           
-          // ✅ Listen for PollCreated event
-          existingConnection.on('PollCreated', (poll) => {
-            console.log('📊 New poll created:', poll);
+          // ✅ Backend sends "ReceiveNewPoll"
+          existingConnection.on('ReceiveNewPoll', (poll) => {
+            console.log('📊 New poll received:', poll);
+            localStorage.setItem(`activePoll_${meetingId}`, poll.pollId);
             setActivePoll(poll);
           });
           
-          // ✅ Listen for VoteUpdated event
-          existingConnection.on('VoteUpdated', (pollUpdate) => {
-            console.log('🗳️ Vote updated:', pollUpdate);
-            setActivePoll(prev => ({
-              ...prev,
-              yesVotes: pollUpdate.yesVotes,
-              noVotes: pollUpdate.noVotes,
-              totalVotes: pollUpdate.totalVotes
-            }));
+          // ✅ Backend sends "UpdatePollStats"
+          existingConnection.on('UpdatePollStats', (updatedPoll) => {
+            console.log('🗳️ Poll stats updated:', updatedPoll);
+            setActivePoll(updatedPoll);
           });
           
-          // ✅ Listen for PollClosed event
-          existingConnection.on('PollClosed', (pollId) => {
-            console.log('🔒 Poll closed:', pollId);
+          // ✅ Backend sends "PollClosed"
+          existingConnection.on('PollClosed', (data) => {
+            console.log('🔒 Poll closed:', data);
             setActivePoll(prev => 
-              prev?.pollId === pollId 
+              prev?.pollId === data.pollId 
                 ? { ...prev, status: 'Closed' }
                 : prev
             );
@@ -79,27 +65,33 @@ useEffect(() => {
 
     setupSignalR();
 
-    // Cleanup
     return () => {
       if (hubConnectionRef.current) {
-        hubConnectionRef.current.off('PollCreated');
-        hubConnectionRef.current.off('VoteUpdated');
+        hubConnectionRef.current.off('ReceiveNewPoll');
+        hubConnectionRef.current.off('UpdatePollStats');
         hubConnectionRef.current.off('PollClosed');
       }
     };
   }, [meetingId]);
 
-   useEffect(() => {
+  // ✅ Fetch active poll with polling (since no GET by meeting endpoint)
+  useEffect(() => {
     fetchActivePoll();
+    
+    // Poll every 5 seconds to sync
+    pollIntervalRef.current = setInterval(() => {
+      fetchActivePoll();
+    }, 5000);
+    
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
   }, [meetingId]);
 
-
   const fetchActivePoll = async () => {
-    setLoading(true);
     try {
-      // Try to get latest poll for this meeting
-      // Since backend doesn't have GET /Polls/meeting/{id}, 
-      // we'll need to store pollId and fetch it directly
       const savedPollId = localStorage.getItem(`activePoll_${meetingId}`);
       
       if (savedPollId) {
@@ -112,12 +104,13 @@ useEffect(() => {
           setActivePoll(response);
         } else {
           setActivePoll(null);
+          localStorage.removeItem(`activePoll_${meetingId}`);
         }
       }
     } catch (error) {
-      console.error('Error fetching poll:', error);
-    } finally {
-      setLoading(false);
+      if (!error.message?.includes('404')) {
+        console.error('Error fetching poll:', error);
+      }
     }
   };
 
@@ -138,7 +131,6 @@ useEffect(() => {
 
       console.log('✅ Poll created:', response);
       
-      // Save pollId for this meeting
       localStorage.setItem(`activePoll_${meetingId}`, response.pollId);
       
       setNewQuestion('');
@@ -147,7 +139,7 @@ useEffect(() => {
     } catch (error) {
       console.error('❌ Error creating poll:', error);
       if (error.message?.includes('403') || error.message?.includes('Forbidden')) {
-        alert('Bạn không có quyền tạo biểu quyết!\nChỉ host/admin mới có thể tạo poll.');
+        alert('Bạn không có quyền tạo biểu quyết!\nChỉ Admin mới có thể tạo poll.');
       } else {
         alert(error.message || 'Không thể tạo poll!');
       }
@@ -156,12 +148,12 @@ useEffect(() => {
 
   const handleVote = async (pollId, choice) => {
     try {
-      const response = await apiCall(`/Polls/${pollId}/vote`, {
+      await apiCall(`/Polls/${pollId}/vote`, {
         method: 'POST',
         body: JSON.stringify({ choice })
       });
 
-      console.log('✅ Vote submitted:', response);
+      console.log('✅ Vote submitted');
       
       // Mark as voted locally
       const newVotedPolls = {
@@ -172,7 +164,7 @@ useEffect(() => {
       localStorage.setItem(`votedPolls_${meetingId}`, JSON.stringify(newVotedPolls));
       
       // Refresh poll data
-      fetchActivePoll();
+      setTimeout(fetchActivePoll, 500);
     } catch (error) {
       console.error('❌ Error voting:', error);
       alert(error.message || 'Không thể vote!');
@@ -180,7 +172,7 @@ useEffect(() => {
   };
 
   const handleClosePoll = async (pollId) => {
-    if (!confirm('Đóng poll này?')) return;
+    if (!window.confirm('Đóng poll này?')) return;
 
     try {
       await apiCall(`/Polls/${pollId}/close`, {
@@ -197,6 +189,7 @@ useEffect(() => {
 
   const hasVoted = activePoll && votedPolls[activePoll.pollId] !== undefined;
   const userVote = activePoll ? votedPolls[activePoll.pollId] : null;
+  const isAdmin = currentUser?.role === 'Admin' || currentUser?.role === 'SuperAdmin';
 
   return (
     <div className="fixed top-0 right-0 h-full w-96 bg-gray-800 shadow-2xl z-40 overflow-y-auto">
@@ -217,8 +210,8 @@ useEffect(() => {
       {/* Content */}
       <div className="p-4 space-y-4">
         
-        {/* Create Poll Button */}
-        {!showCreateForm && !activePoll && (
+        {/* Create Poll Button - Only for Admin */}
+        {isAdmin && !showCreateForm && !activePoll && (
           <button
             onClick={() => setShowCreateForm(true)}
             className="w-full py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold flex items-center justify-center gap-2"
@@ -360,7 +353,7 @@ useEffect(() => {
             </div>
 
             {/* Close Poll Button (Admin only) */}
-            {activePoll.status === 'Open' && (
+            {isAdmin && activePoll.status === 'Open' && (
               <button
                 onClick={() => handleClosePoll(activePoll.pollId)}
                 className="w-full py-2 bg-gray-600 hover:bg-gray-500 rounded-lg text-sm transition-colors"
