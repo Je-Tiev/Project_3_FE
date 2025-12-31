@@ -26,7 +26,7 @@ export default function PollsPanel({ meetingId, onClose }) {
     }
   }, [meetingId]);
 
-  // ✅ SignalR listeners - MATCHING BACKEND
+  // SignalR listeners - MATCHING BACKEND
   useEffect(() => {
     const setupSignalR = async () => {
       try {
