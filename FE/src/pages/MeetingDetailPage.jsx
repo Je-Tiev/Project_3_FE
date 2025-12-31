@@ -5,6 +5,7 @@ import { useMeetingWithWebRTC } from "../hook/useMeeting";
 import VideoTile from "../components/VideoTile";
 import { BarChart2, Mic, MicOff, Video, VideoOff, Share2, PhoneOff, FileText, Download, Eye, File } from "lucide-react";
 import PollsPanel from "../components/PollsPanel";
+import PollNotification from '../components/PollNotification';
 import { apiCall } from "../utils/api";
 
 export default function MeetingDetailPage() {
@@ -20,6 +21,7 @@ export default function MeetingDetailPage() {
   const [documents, setDocuments] = useState([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [showPolls, setShowPolls] = useState(false);
+  const [pollNotification, setPollNotification] = useState(null);
 
   const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5075/api";
 

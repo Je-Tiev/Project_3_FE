@@ -48,7 +48,7 @@ export default function PollsPanel({ meetingId, onClose }) {
             setActivePoll(updatedPoll);
           });
           
-          // ✅ Backend sends "PollClosed"
+          // Backend sends "PollClosed"
           existingConnection.on('PollClosed', (data) => {
             console.log('🔒 Poll closed:', data);
             setActivePoll(prev => 
@@ -74,7 +74,7 @@ export default function PollsPanel({ meetingId, onClose }) {
     };
   }, [meetingId]);
 
-  // ✅ Fetch active poll with polling (since no GET by meeting endpoint)
+  //  Fetch active poll with polling (since no GET by meeting endpoint)
   useEffect(() => {
     fetchActivePoll();
     
@@ -129,7 +129,7 @@ export default function PollsPanel({ meetingId, onClose }) {
         })
       });
 
-      console.log('✅ Poll created:', response);
+      console.log(' Poll created:', response);
       
       localStorage.setItem(`activePoll_${meetingId}`, response.pollId);
       
@@ -153,7 +153,7 @@ export default function PollsPanel({ meetingId, onClose }) {
         body: JSON.stringify({ choice })
       });
 
-      console.log('✅ Vote submitted');
+      console.log(' Vote submitted');
       
       // Mark as voted locally
       const newVotedPolls = {
@@ -179,10 +179,10 @@ export default function PollsPanel({ meetingId, onClose }) {
         method: 'PUT'
       });
 
-      console.log('✅ Poll closed');
+      console.log('Poll closed');
       fetchActivePoll();
     } catch (error) {
-      console.error('❌ Error closing poll:', error);
+      console.error('Error closing poll:', error);
       alert('Không thể đóng poll!');
     }
   };
