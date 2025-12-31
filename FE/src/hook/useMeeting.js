@@ -25,12 +25,17 @@ export function useMeetingWithWebRTC(
   const peersRef = useRef(new Map()); // connectionId -> { pc, stream }
   const joinedRef = useRef(false);
 
+  const screenStreamRef = useRef(null); 
+  const [screenShareStreams, setScreenShareStreams] = useState({});
+  const [screenShareStream, setScreenShareStream] = useState(null);
+
   const [status, setStatus] = useState("idle");
   const [participants, setParticipants] = useState([]);
   const [remoteStreams, setRemoteStreams] = useState({});
   const [messages, setMessages] = useState([]);
   const [error, setError] = useState(null);
   const [roomName, setRoomName] = useState(null);
+  const [sharerId, setSharerId] = useState(null);
 
   const [isMicOn, setIsMicOn] = useState(defaultMicOn);
   const [isVideoOn, setIsVideoOn] = useState(defaultCamOn);
@@ -45,6 +50,7 @@ export function useMeetingWithWebRTC(
     }
 
     pc.ontrack = (event) => {
+      const incomingStream = event.streams[0];
       const remoteStream = new MediaStream();
       if (event.streams?.length) {
         event.streams.forEach((s) =>
@@ -53,7 +59,23 @@ export function useMeetingWithWebRTC(
       } else if (event.track) {
         remoteStream.addTrack(event.track);
       }
-      setRemoteStreams((prev) => ({ ...prev, [connectionId]: remoteStream }));
+      setRemoteStreams((prev) => {
+         if (!prev[connectionId]) {
+          return { ...prev, [connectionId]: incomingStream };
+        }
+        
+        // Nếu stream ID mới khác stream ID cũ -> Đây là Screen Share Stream
+        if (prev[connectionId].id !== incomingStream.id) {
+           console.log("📺 Nhận được Screen Stream từ:", connectionId);
+           setScreenShareStreams(prevSSR => ({
+             ...prevSSR,
+             [connectionId]: incomingStream
+           }));
+           return prev; // Không thay đổi remoteStreams gốc (Camera)
+        }
+        return prev;
+      });
+
     };
 
     pc.onicecandidate = (evt) => {
@@ -188,31 +210,53 @@ export function useMeetingWithWebRTC(
   // ---------- Register Events ----------
   const registerSignalREvents = useCallback(
     (connection) => {
+      // Clear các event cũ để tránh duplicate
       connection.off("JoinedRoom");
       connection.off("ExistingParticipants");
       connection.off("UserJoined");
       connection.off("UserLeft");
       connection.off("ReceiveSignal");
-      connection.off("ReceiveMessage");
-      connection.off("PollCreated");
-      connection.off("VoteUpdated");
-      connection.off("PollClosed");
+      connection.off("ScreenShareStarted");
+      connection.off("ScreenShareStopped");
+
+      // 1. Xử lý sự kiện START Share từ Server
+      connection.on("ScreenShareStarted", (data) => {
+        setSharerId(data.connectionId); // Lấy ID từ object
+        console.log("📺 [SignalR] User STARTED sharing:", data.connectionId);
+        
+        setParticipants((prev) => prev.map((p) => ({ 
+            ...p, 
+            isScreenSharing: p.connectionId == data.connectionId 
+        })));
+      });
+
+      // 2. Xử lý sự kiện STOP Share từ Server
+      connection.on("ScreenShareStopped", (data) => {
+        console.log("🛑 [SignalR] User STOPPED sharing:", data.connectionId);
+        setSharerId(null);
+        
+        setScreenShareStreams(prev => {
+            const copy = { ...prev };
+            delete copy[data.connectionId];
+            return copy;
+        });
+        setParticipants((prev) => prev.map((p) => ({ ...p, isScreenSharing: false })));
+      });
 
       connection.on("JoinedRoom", (info) => {
         setRoomName(info?.roomName);
         setStatus("joined");
       });
-      // Nếu mình là người mới => mình gửi offer
+
       connection.on("ExistingParticipants", async (users) => {
+        console.log("👥 Existing participants:", users);
         setParticipants(users);
         const localStream = localStreamRef.current;
-        if (!localStream) {
-          return;
-        }
+        if (!localStream) return;
+        
         for (const u of users) {
           if (!peersRef.current.has(u.connectionId)) {
             const pc = createPeerConnection(u.connectionId, localStream);
-            // Chủ động gửi offer
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
             connectionRef.current?.invoke("SendSignal", u.connectionId, {
@@ -222,21 +266,18 @@ export function useMeetingWithWebRTC(
           }
         }
       });
-      // Nếu người khác mới vào => họ gửi offer
+
       connection.on("UserJoined", (u) => {
+        console.log("👤 User joined:", u);
         setParticipants((prev) => [...prev, u]);
         const localStream = localStreamRef.current;
-
         if (localStream && !peersRef.current.has(u.connectionId)) {
-          // chỉ cần tạo peer connection, chờ họ gửi offer, không cần gọi createOffer
           createPeerConnection(u.connectionId, localStream);
         }
       });
 
       connection.on("UserLeft", (u) => {
-        setParticipants((prev) =>
-          prev.filter((p) => p.connectionId !== u.connectionId)
-        );
+        setParticipants((prev) => prev.filter((p) => p.connectionId !== u.connectionId));
         if (peersRef.current.has(u.connectionId)) {
           peersRef.current.get(u.connectionId).pc.close();
           peersRef.current.delete(u.connectionId);
@@ -248,24 +289,7 @@ export function useMeetingWithWebRTC(
         });
       });
 
-      connection.on("ReceiveSignal", (from, signal) =>
-        handleSignal(from, signal)
-      );
-      connection.on("ReceiveMessage", (msg) =>
-        setMessages((prev) => [...prev, msg])
-      );
-      connection.on("PollCreated", (poll) => {
-        console.log("📊 [SignalR] Poll created:", poll);
-      });
-
-      connection.on("VoteUpdated", (pollUpdate) => {
-        console.log("🗳️ [SignalR] Vote updated:", pollUpdate);
-      });
-
-      connection.on("PollClosed", (pollId) => {
-        console.log("🔒 [SignalR] Poll closed:", pollId);
-      });
-
+      connection.on("ReceiveSignal", (from, signal) => handleSignal(from, signal));
     },
     [createPeerConnection, handleSignal]
   );
@@ -355,159 +379,114 @@ useEffect(() => {
   // ---------- ACTIONS: CAM & MIC ----------
   const toggleCamera = async () => {
     if (!roomName) return;
-
     try {
       if (isVideoOn) {
-        // TẮT CAM
         const videoTrack = localStreamRef.current?.getVideoTracks()[0];
-        if (videoTrack) {
-          videoTrack.stop();
-          localStreamRef.current.removeTrack(videoTrack);
-        }
+        if (videoTrack) { videoTrack.stop(); localStreamRef.current.removeTrack(videoTrack); }
         setIsVideoOn(false);
-        await connectionRef.current.invoke(
-          "ToggleMedia",
-          roomName,
-          "video",
-          false
-        );
+        await connectionRef.current.invoke("ToggleMedia", roomName, "video", false);
       } else {
-        // BẬT CAM
-        const newStream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-        });
+        const newStream = await navigator.mediaDevices.getUserMedia({ video: true });
         const newVideoTrack = newStream.getVideoTracks()[0];
-
-        if (localStreamRef.current) {
-          localStreamRef.current.addTrack(newVideoTrack);
-        }
-
+        if (localStreamRef.current) localStreamRef.current.addTrack(newVideoTrack);
+        
         peersRef.current.forEach(({ pc }) => {
-          const senders = pc.getSenders();
-          const videoSender = senders.find(
-            (s) => s.track?.kind === "video" || s.track === null
-          );
-          if (videoSender) {
-            videoSender
-              .replaceTrack(newVideoTrack)
-              .catch((err) => console.error("Replace track failed", err));
-          } else {
-            pc.addTrack(newVideoTrack, localStreamRef.current);
-          }
+            const sender = pc.getSenders().find(s => s.track?.kind === "video" || s.track === null);
+            if (sender) sender.replaceTrack(newVideoTrack).catch(console.error);
+            else pc.addTrack(newVideoTrack, localStreamRef.current);
         });
-
         setIsVideoOn(true);
-        await connectionRef.current.invoke(
-          "ToggleMedia",
-          roomName,
-          "video",
-          true
-        );
+        await connectionRef.current.invoke("ToggleMedia", roomName, "video", true);
       }
-    } catch (err) {
-      console.error("Lỗi toggle camera:", err);
-      setIsVideoOn(false);
-    }
+    } catch (err) { console.error(err); }
   };
 
   const toggleMicrophone = async () => {
     if (!localStreamRef.current || !roomName) return;
     const newState = !isMicOn;
-    const audioTrack = localStreamRef.current.getAudioTracks()[0];
-    if (audioTrack) {
-      audioTrack.enabled = newState;
-    }
+    localStreamRef.current.getAudioTracks()[0].enabled = newState;
     setIsMicOn(newState);
-    await connectionRef.current
-      .invoke("ToggleMedia", roomName, "microphone", newState)
-      .catch(console.warn);
+    await connectionRef.current.invoke("ToggleMedia", roomName, "microphone", newState);
   };
 
-  // ---------- ACTIONS: SHARE SCREEN (Đã chuyển vào trong) ----------
-
-  // 3. Dừng chia sẻ
-  const stopScreenShare = useCallback(async () => {
-    // 1. Tắt track màn hình hiện tại
-    const screenTrack = localStreamRef.current?.getVideoTracks()[0];
-    if (screenTrack) {
-      screenTrack.stop();
-    }
-
-    setIsScreenSharing(false);
-
-    // 2. Bật lại Camera (Nếu muốn tự động bật lại cam sau khi tắt share)
-    try {
-      const camStream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-      });
-      const camTrack = camStream.getVideoTracks()[0];
-
-      if (localStreamRef.current) {
-        // Xóa track cũ (screen)
-        const oldTracks = localStreamRef.current.getVideoTracks();
-        oldTracks.forEach((t) => localStreamRef.current.removeTrack(t));
-        // Thêm track mới (cam)
-        localStreamRef.current.addTrack(camTrack);
-      }
-
-      peersRef.current.forEach(({ pc }) => {
-        const sender = pc.getSenders().find((s) => s.track?.kind === "video");
-        if (sender) sender.replaceTrack(camTrack).catch(console.warn);
-      });
-
-      setIsVideoOn(true);
-      // Báo server bật lại video
-      if (roomName) {
-        connectionRef.current?.invoke("ToggleMedia", roomName, "video", true);
-      }
-    } catch (e) {
-      console.error("Không thể bật lại camera sau khi tắt share", e);
-      setIsVideoOn(false);
-    }
-  }, [roomName]); // Thêm dependency roomName nếu dùng trong invoke
-
-  // 4. Bắt đầu chia sẻ màn hình
+  // 2. Stop Screen Share
   const startScreenShare = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
-        audio: true,
-      });
-
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
       const screenTrack = stream.getVideoTracks()[0];
 
-      // Xử lý khi user bấm nút "Stop sharing" của trình duyệt
-      screenTrack.onended = () => {
-        stopScreenShare();
-      };
+      screenTrack.onended = () => stopScreenShare();
+      screenStreamRef.current = stream;
 
-      // Thay thế track Camera hiện tại bằng track Màn hình
-      if (localStreamRef.current) {
-        const oldVideoTrack = localStreamRef.current.getVideoTracks()[0];
-        if (oldVideoTrack) {
-          oldVideoTrack.stop(); // Tắt cam vật lý
-          localStreamRef.current.removeTrack(oldVideoTrack);
-        }
-        localStreamRef.current.addTrack(screenTrack);
+      setScreenShareStream(stream); 
+      setSharerId("local");
+      setIsScreenSharing(true);
+ 
+      for (const [peerId, { pc }] of peersRef.current) {
+        // Add track vào PC hiện tại (Tạo ra dòng dữ liệu thứ 2 song song camera)
+        pc.addTrack(screenTrack, stream);
+        
+        // QUAN TRỌNG: Phải Đàm phán lại (Renegotiation) để bên kia nhận được track mới
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        connectionRef.current?.invoke("SendSignal", peerId, {
+           type: "offer",
+           sdp: pc.localDescription
+        });
       }
 
-      // Cập nhật cho Peer
-      peersRef.current.forEach(({ pc }) => {
-        const sender = pc
-          .getSenders()
-          .find((s) => s.track?.kind === "video" || s.track === null);
-        if (sender) {
-          sender.replaceTrack(screenTrack).catch(console.error);
-        }
-      });
-
-      setIsScreenSharing(true);
-      // Khi share screen, coi như video đang on (để hiện hình)
-      setIsVideoOn(true);
+      if (meetingId && connectionRef.current) {
+         try {
+            await connectionRef.current.invoke("StartScreenShare", Number(meetingId));
+          } catch (serverErr) {
+            console.error("Server từ chối share:", serverErr);
+            // Nếu server từ chối, phải tắt ngay share local
+            stopScreenShare(); 
+            alert(serverErr.message || "Không thể chia sẻ màn hình lúc này.");
+          }
+      }
+      
     } catch (err) {
       console.warn("Huỷ chia sẻ màn hình:", err);
     }
-  }, [stopScreenShare]);
+  }, [meetingId, roomName]); // Cần dependency meetingId
+
+  // 4. STOP SHARE (Đã sửa cho khớp Backend)
+  const stopScreenShare = useCallback(async () => {
+    const stream = screenStreamRef.current;
+    if (!stream) return;
+
+    // 1. Stop tracks
+    stream.getTracks().forEach(t => t.stop());
+    screenStreamRef.current = null;
+    setScreenShareStream(null);
+    setSharerId(null);
+    setIsScreenSharing(false);
+
+    for (const [peerId, { pc }] of peersRef.current) {
+      const senders = pc.getSenders();
+      // Tìm sender đang gửi track của screen stream
+      const sender = senders.find(s => s.track === null && (s.track.kind === 'video' && s.track.readyState === 'ended'));
+      
+      if (sender) {
+        pc.removeTrack(sender);
+        
+        // Đàm phán lại để bên kia biết là đã tắt share
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        connectionRef.current?.invoke("SendSignal", peerId, {
+           type: "offer",
+           sdp: pc.localDescription
+        });
+      }
+    }
+    
+    // SỬA QUAN TRỌNG: Gửi Number(meetingId) thay vì roomName
+    if (meetingId && connectionRef.current) {
+        connectionRef.current.invoke("StopScreenShare", Number(meetingId))
+            .catch(err => console.error("Lỗi gửi StopScreenShare:", err));
+    }
+  }, [meetingId, roomName]);
 
   // ---------- RETURN ----------
   return {
@@ -525,6 +504,9 @@ useEffect(() => {
     toggleMicrophone,
     startScreenShare,
     stopScreenShare,
+    screenShareStreams,
+    screenShareStream,
+    sharerId,
     sendMessage: (text) =>
       connectionRef.current?.invoke("SendMessage", Number(meetingId), text),
   };
