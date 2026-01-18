@@ -1,0 +1,68 @@
+workspace {
+    name "Paperless Meeting System - Frontend"
+    description "C4 Container Diagram for Frontend Architecture"
+
+    model {
+        user = person "User" "A person using the video conference system (Admin or Regular User)"
+
+        videoConferencingSystem = softwareSystem "Paperless Meeting System""Allows users to conduct online meetings with video, audio, and document sharing" {
+
+            webApp = container "React Web Application""Provides video conference functionality through the user's web browser. Handles routing, state management, WebRTC peer connections, and real-time signaling.""React 18, React Router 7, Vite, TailwindCSS"
+
+            apiServer = container "Backend API Server""Provides REST API for authentication, meeting management, user management, and WebSocket hub management""ASP.NET Core, C#"
+
+            signalrHub = container "SignalR Hub""Manages real-time WebSocket connections for WebRTC signaling, chat messages, and meeting events""SignalR Core"
+
+            localStorage = container "Browser Local Storage""Stores JWT tokens, refresh tokens, user profile, and cached meeting data on the client side""Browser localStorage API"
+        }
+
+        iceServers = softwareSystem "ICE STUN Servers""Provides STUN servers for NAT traversal in WebRTC peer connections"
+
+        user -> webApp "Uses the system via browser (HTTPS)"
+
+        webApp -> apiServer "Calls REST APIs (JSON over HTTP/HTTPS)"
+        apiServer -> webApp "Returns auth tokens, meeting data, errors (JSON)"
+
+        webApp -> signalrHub "Establishes real-time connection (WebSocket)"
+        signalrHub -> webApp "Pushes meeting events, signaling messages"
+
+        webApp -> iceServers "Discovers ICE candidates (STUN)"
+        iceServers -> webApp "Returns NAT mapping"
+
+        webApp -> localStorage "Reads/Writes tokens and cached data"
+
+        apiServer -> signalrHub "Manages hub connections (in-process)"
+
+        webApp -> webApp "Establishes peer-to-peer media streams (WebRTC)"
+    }
+
+    views {
+        container videoConferencingSystem "Frontend_Container_Diagram""C4 Container Diagram showing Frontend architecture" {
+
+            include *
+            autolayout lr
+
+        }
+
+     
+        styles {
+                element "Software System" {
+                    background #1168bd
+                    color #ffffff
+                    fontSize 22
+                }
+
+                element "Container" {
+                    background #438dd5
+                    color #ffffff
+                    fontSize 14
+                }
+
+                element "Person" {
+                    background #08427b
+                    color #ffffff
+                    fontSize 14
+                }
+            }
+    }
+}
